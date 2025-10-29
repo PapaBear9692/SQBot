@@ -1,0 +1,17 @@
+name: SQBot
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - pip:
+    - flask
+    - python-dotenv
+    - pinecone-client
+    - langchain
+    - langchain-community
+    - sentence-transformers
+    - google-generativeai
+    - openai
+    - gunicorn # For running the app

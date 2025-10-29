@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical RAG Chat</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+
+    <div class="w-full max-w-2xl h-[90vh] bg-white rounded-lg shadow-xl flex flex-col">
+        <!-- Header -->
+        <div class="bg-blue-600 text-white p-4 rounded-t-lg shadow-md">
+            <h1 class="text-2xl font-bold text-center">Medical Chatbot</h1>
+            <p class="text-xs text-center text-blue-100">
+                Using: {{ llm_provider }} (LLM) & {{ embedder_provider }} (Embedder)
+            </p>
+        </div>
+
+        <!-- Chat Messages -->
+        <div id="chat-box" class="flex-1 p-6 overflow-y-auto space-y-4">
+            <!-- Bot Welcome Message -->
+            <div class="flex justify-start">
+                <div class="bg-gray-200 text-gray-800 p-3 rounded-lg max-w-lg shadow">
+                    <p>Hello! I am a medical assistant. Ask me a question about your documents.</p>
+                </div>
+            </div>
+            <!-- Messages will be added here by JS -->
+        </div>
+        
+        <!-- Loading Indicator -->
+        <div id="loading-indicator" class="p-4 text-center text-gray-500 hidden">
+            <p>Thinking...</p>
+        </div>
+
+        <!-- Input Area -->
+        <div class="p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+            <form id="chat-form" class="flex items-center space-x-3">
+                <input 
+                    type="text" 
+                    id="user-prompt" 
+                    placeholder="Type your question..." 
+                    class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autocomplete="off"
+                >
+                <button 
+                    type="submit" 
+                    class="bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                >
+                    Send
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const chatForm = document.getElementById('chat-form');
+            const userPromptInput = document.getElementById('user-prompt');
+            const chatBox = document.getElementById('chat-box');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            const submitButton = chatForm.querySelector('button');
+
+            chatForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const prompt = userPromptInput.value.trim();
+                if (!prompt) return;
+
+                // Disable form and show loading
+                userPromptInput.disabled = true;
+                submitButton.disabled = true;
+                loadingIndicator.classList.remove('hidden');
+
+                // Add user message to chat
+                addMessage(prompt, 'user');
+                
+                // Clear input
+                userPromptInput.value = '';
+
+                try {
+                    // Send prompt to backend
+                    const response = await fetch('/ask', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ prompt: prompt }),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    
+                    // Add bot response to chat
+                    addMessage(data.answer, 'bot');
+
+                } catch (error) {
+                    console.error('Error fetching response:', error);
+                    addMessage('Sorry, something went wrong. Please check the console and try again.', 'bot');
+                } finally {
+                    // Re-enable form and hide loading
+                    userPromptInput.disabled = false;
+                    submitButton.disabled = false;
+                    loadingIndicator.classList.add('hidden');
+                    userPromptInput.focus();
+                }
+            });
+
+            function addMessage(text, sender) {
+                const messageDiv = document.createElement('div');
+                const messageBubble = document.createElement('div');
+                messageBubble.classList.add('p-3', 'rounded-lg', 'max-w-lg', 'shadow');
+                messageBubble.innerText = text.trim();
+
+                if (sender === 'user') {
+                    messageDiv.classList.add('flex', 'justify-end');
+                    messageBubble.classList.add('bg-blue-600', 'text-white');
+                } else {
+                    messageDiv.classList.add('flex', 'justify-start');
+                    messageBubble.classList.add('bg-gray-200', 'text-gray-800');
+                }
+                
+                messageDiv.appendChild(messageBubble);
+                chatBox.appendChild(messageDiv);
+                
+                // Scroll to bottom
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+        });
+    </script>
+</body>
+</html>
