@@ -1,48 +1,58 @@
+import os
 from typing import List
-from langchain_community.document_loaders import DirectoryLoader, TextLoader
+from langchain_community.document_loaders import PyPDFLoader, TextLoader, DirectoryLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
-from core.interfaces import DataLoaderInterface, TextSplitterInterface
-import config
+from utils.app_config import CHUNK_SIZE, CHUNK_OVERLAP, DATA_DIRECTORY
 
-class SimpleDirectoryLoader(DataLoaderInterface):
-    """Loads all .txt files from a directory."""
-    def load(self, source: str) -> List[Document]:
-        print(f"Loading documents from: {source}")
-        loader = DirectoryLoader(
-            source, 
-            glob="**/*.txt", 
-            loader_cls=TextLoader,
-            show_progress=True,
-            use_multithreading=True
-        )
-        try:
-            return loader.load()
-        except Exception as e:
-            print(f"Error loading documents: {e}")
-            return []
-
-class LangChainTextSplitter(TextSplitterInterface):
-    """Wraps LangChain's RecursiveCharacterTextSplitter."""
-    def __init__(self, chunk_size: int, chunk_overlap: int):
-        self.splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
+class DataLoader:
+    """
+    Handles loading all .txt and .pdf files from the data directory
+    and splitting them into manageable chunks.
+    """
+    def __init__(self, data_dir: str = DATA_DIRECTORY):
+        self.data_dir = data_dir
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=CHUNK_SIZE,
+            chunk_overlap=CHUNK_OVERLAP,
             length_function=len,
         )
-        print(f"Text splitter initialized with chunk_size={chunk_size}, chunk_overlap={chunk_overlap}")
+
+    def load_documents(self) -> List[Document]:
+        """Loads all .txt and .pdf files from the specified directory."""
+        
+        # Ensure the data directory exists
+        if not os.path.exists(self.data_dir):
+            print(f"Error: Data directory '{self.data_dir}' not found.")
+            return []
+
+        print(f"Loading documents from {self.data_dir}...")
+        
+        # Use DirectoryLoader to handle multiple file types
+        # We specify a loader for each file type
+        loader = DirectoryLoader(
+            self.data_dir,
+            glob="**/*", # Load all files in all subdirectories
+            use_multithreading=True,
+            show_progress=True,
+            loader = DirectoryLoader(
+                self.data_dir,
+                loader_cls={
+                    ".pdf": PyPDFLoader,
+                    ".txt": TextLoader
+                }
+            )
+
+        )
+        
+        documents = loader.load()
+        return documents
 
     def split_documents(self, documents: List[Document]) -> List[Document]:
-        print(f"Splitting {len(documents)} documents...")
-        return self.splitter.split_documents(documents)
-
-# --- Factory Functions ---
-
-def get_loader() -> DataLoaderInterface:
-    return SimpleDirectoryLoader()
-
-def get_splitter() -> TextSplitterInterface:
-    return LangChainTextSplitter(
-        chunk_size=config.CHUNK_SIZE,
-        chunk_overlap=config.CHUNK_OVERLAP
-    )
+        """Splits a list of loaded documents into smaller chunks."""
+        if not documents:
+            return []
+            
+        print(f"Splitting {len(documents)} documents into chunks...")
+        chunks = self.text_splitter.split_documents(documents)
+        return chunks

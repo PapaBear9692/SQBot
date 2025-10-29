@@ -1,98 +1,89 @@
-from typing import List
-from langchain_core.documents import Document
-from langchain_core.prompts import PromptTemplate
+from typing import List, Dict, Any
+from model.core_interface import LLMInterface
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
-from core.interfaces import LLMInterface
-import config
+from utils.promptTemplate import RAG_PROMPT_TEMPLATE
+
+from utils.app_config import (
+    LLM_PROVIDER,
+    LLM_MODELS,
+    GOOGLE_API_KEY,
+    OPENAI_API_KEY
+)
+
+
 
 class GeminiLLM(LLMInterface):
     """Implementation for Google's Gemini model."""
-    def __init__(self, model_name: str = config.LLM_MODELS["gemini"]):
+    def __init__(self):
+        self.model_name = LLM_MODELS["gemini"]
         try:
             self.llm = ChatGoogleGenerativeAI(
-                model=model_name,
-                google_api_key=config.GOOGLE_API_KEY,
-                temperature=0.3
+                model=self.model_name,
+                google_api_key=GOOGLE_API_KEY,
+                temperature=0.4,
+                convert_system_message_to_human=True  # For compatibility
             )
-            print(f"Loaded GeminiLLM: {model_name}")
+            print(f"Loaded GeminiLLM: {self.model_name}")
         except Exception as e:
             print(f"Error loading ChatGoogleGenerativeAI: {e}")
-            print("Please ensure GOOGLE_API_KEY is set correctly in your .env file.")
             raise
         self._setup_chain()
 
     def _setup_chain(self):
-        prompt_template = """
-        You are a helpful medical assistant. Answer the user's question based *only* on the following context.
-        If the context does not contain the answer, say "I am sorry, but the provided context does not contain that information."
-
-        Context:
-        {context}
-
-        Question:
-        {question}
-
-        Answer:
-        """
+        """Sets up the LangChain chain for RAG."""
         prompt = PromptTemplate(
-            template=prompt_template,
+            template=RAG_PROMPT_TEMPLATE,
             input_variables=["context", "question"]
         )
         self.chain = prompt | self.llm | StrOutputParser()
 
-    def generate_response(self, prompt: str, context: List[Document]) -> str:
-        context_str = "\n\n".join([doc.page_content for doc in context])
+    def generate_response(self, prompt: str, context: List[Dict[str, Any]]) -> str:
+        context_str = "\n\n".join([doc.get("text", "") for doc in context])
         return self.chain.invoke({"context": context_str, "question": prompt})
+
 
 class OpenAILLM(LLMInterface):
     """Implementation for OpenAI's GPT models."""
-    def __init__(self, model_name: str = config.LLM_MODELS["openai"]):
+    def __init__(self):
+        self.model_name = LLM_MODELS["openai"]
         try:
             self.llm = ChatOpenAI(
-                model=model_name,
-                openai_api_key=config.OPENAI_API_KEY,
+                model=self.model_name,
+                api_key=OPENAI_API_KEY,
                 temperature=0.3
             )
-            print(f"Loaded OpenAILLM: {model_name}")
+            print(f"Loaded OpenAILLM: {self.model_name}")
         except Exception as e:
             print(f"Error loading ChatOpenAI: {e}")
-            print("Please ensure OPENAI_API_KEY is set correctly in your .env file.")
             raise
         self._setup_chain()
 
     def _setup_chain(self):
-        # Using the same prompt template for consistency
-        prompt_template = """
-        You are a helpful medical assistant. Answer the user's question based *only* on the following context.
-        If the context does not contain the answer, say "I am sorry, but the provided context does not contain that information."
-
-        Context:
-        {context}
-
-        Question:
-        {question}
-
-        Answer:
-        """
+        """Sets up the LangChain chain for RAG."""
         prompt = PromptTemplate(
-            template=prompt_template,
+            template=RAG_PROMPT_TEMPLATE,
             input_variables=["context", "question"]
         )
         self.chain = prompt | self.llm | StrOutputParser()
 
-    def generate_response(self, prompt: str, context: List[Document]) -> str:
-        context_str = "\n\n".join([doc.page_content for doc in context])
+    def generate_response(self, prompt: str, context: List[Dict[str, Any]]) -> str:
+        context_str = "\n\n".join([doc.get("text", "") for doc in context])
         return self.chain.invoke({"context": context_str, "question": prompt})
+
 
 # --- Factory Function ---
 
 def get_llm() -> LLMInterface:
-    """Factory function to get the configured LLM."""
-    if config.LLM_PROVIDER == "openai":
+    """
+    Factory function to get the configured LLM
+    based on the 'LLM_PROVIDER' in app_config.py.
+    """
+    if LLM_PROVIDER == "openai":
         return OpenAILLM()
-    elif config.LLM_PROVIDER == "gemini":
+    elif LLM_PROVIDER == "gemini":
         return GeminiLLM()
     else:
-        raise ValueError(f"Unknown LLM provider: {config.LLM_PROVIDER}")
+        raise ValueError(f"Unknown LLM provider: {LLM_PROVIDER}")

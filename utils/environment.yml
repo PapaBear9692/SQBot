@@ -8,7 +8,7 @@ dependencies:
   - pip:
     - flask
     - python-dotenv
-    - pinecone-client
+    - pinecone
     - langchain
     - langchain-community
     - sentence-transformers

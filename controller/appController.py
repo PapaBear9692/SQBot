@@ -1,43 +1,48 @@
-from flask import Flask, render_template, request, jsonify
-from rag_service import rag_service_instance # Import the singleton
-import config
+from flask import request, jsonify
+from model.ragModel import RAGModel
 
-app = Flask(__name__)
+# --- Initialization ---
 
-# --- Controller (Routes) ---
+# Initialize the RAG Model. This runs once when the app starts.
+# It pre-loads the LLM, Embedder, and connects to Pinecone.
+try:
+    rag_model = RAGModel()
+    print("appController: RAGModel initialized successfully.")
+except Exception as e:
+    rag_model = None
+    print(f"FATAL: appController: RAGModel failed to initialize. Error: {e}")
 
-@app.route("/")
-def index():
-    """
-    Serves the main chat page (the "View").
-    """
-    return render_template("index.html",
-                           llm_provider=config.LLM_PROVIDER,
-                           embedder_provider=config.EMBEDDER_PROVIDER
-                           )
+# --- Route Handler ---
 
-@app.route("/ask", methods=["POST"])
-def ask():
+def handle_chat_request():
     """
-    API endpoint to handle user prompts (the "Prompt Collector").
-    It calls the "Model" (RAGService) to get an answer.
+    Handles the POST request from the /ask API endpoint.
+    It gets the user's question, passes it to the RAG model,
+    and returns the generated answer.
     """
-    if not rag_service_instance:
-        return jsonify({"error": "RAGService failed to initialize. Check server logs."}), 500
-        
+    # Check if the RAG model loaded correctly
+    if not rag_model:
+        return jsonify({
+            'answer': "Error: The RAG system is not initialized. Please check the server logs."
+        }), 500
+
+    # Get JSON data from the request
     data = request.get_json()
-    prompt = data.get("prompt")
-    
-    if not prompt:
-        return jsonify({"error": "No prompt provided"}), 400
-        
-    print(f"Received prompt: {prompt}")
-    
-    # 1. Call the RAG service to get the answer
-    answer = rag_service_instance.get_answer(prompt)
-    
-    # 2. Return the answer as JSON
-    return jsonify({"answer": answer})
+    user_question = data.get('prompt')
 
-if __name__ == "__main__":
-    app.run(debug=True)
+    if not user_question:
+        return jsonify({'answer': "Error: No prompt provided."}), 400
+
+    print(f"appController: Received prompt: {user_question}")
+
+    try:
+        # 1. Get the answer from the RAG model
+        answer, sources = rag_model.generate_answer(user_question)
+        
+        # 2. Return the answer
+        # You can also return 'sources' if you want to display them on the frontend
+        return jsonify({'answer': answer})
+        
+    except Exception as e:
+        print(f"Error in appController.handle_chat_request: {e}")
+        return jsonify({'answer': "An error occurred while processing your request."}), 500
