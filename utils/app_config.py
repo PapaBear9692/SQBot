@@ -15,8 +15,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # Supported: "gemini", "gpt"
 LLM_PROVIDER = "gemini"
 
-# Supported: "default" (all-miniLm-l6), "openai" (text-embedder-small)
-EMBEDDER_PROVIDER = "default"
+# Supported: "default" (all-miniLm-l6), "openai" (text-embedder-small), "PubMedBert" (NeuML/pubmedbert-base-embeddings)
+EMBEDDER_PROVIDER = "PubMedBert"
 
 # --- Model Names ---
 LLM_MODELS = {
@@ -26,20 +26,22 @@ LLM_MODELS = {
 
 EMBEDDER_MODELS = {
     "default": "all-MiniLM-L6-v2",
-    "openai": "text-embedder-small"
+    "PubMedBert" : "NeuML/pubmedbert-base-embeddings",
+    "openai": "text-embedder-small",
 }
 
 # --- Vector Store Config ---
 PINECONE_INDEX_NAME = "sqbot-index" # <<< IMPORTANT: Change this
 EMBEDDING_DIMENSIONS = {
     "default": 384,  # all-MiniLM-L6-v2 dimension
-    "openai": 1536    # text-embedder-small dimension
+    "PubMedBert": 768, # PubMedBert dimension
+    "openai": 1536,  # text-embedder-small dimension
 }
 
 # --- Data Processing Config ---
 DATA_DIRECTORY = "data"
-CHUNK_SIZE = 500
-CHUNK_OVERLAP = 20
+CHUNK_SIZE = 800
+CHUNK_OVERLAP = 80
 
 # --- RAG Config ---
-TOP_K_RESULTS = 3
+TOP_K_RESULTS = 5

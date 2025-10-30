@@ -1,77 +1,81 @@
-from typing import List
-from model.core_interface import EmbeddingInterface
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings import SentenceTransformerEmbeddings
+from langchain_openai import OpenAIEmbeddings
+from utils.app_config import EMBEDDER_MODELS, EMBEDDING_DIMENSIONS, OPENAI_API_KEY
 
+class BaseEmbedder:
+    """Base class for all embedding providers."""
+    def embed_documents(self, texts):
+        raise NotImplementedError
+    
+    def embed_query(self, text):
+        raise NotImplementedError
+        
+    def get_dimension(self):
+        raise NotImplementedError
 
-from utils.app_config import (
-    EMBEDDER_PROVIDER,
-    EMBEDDER_MODELS,
-    EMBEDDING_DIMENSIONS,
-    GOOGLE_API_KEY
-)
+class HuggingFaceEmbedder(BaseEmbedder):
+    """Wrapper for Sentence Transformer models (including default and PubMedBert)."""
+    def __init__(self, model_name, dimension):
+        # LangChain's SentenceTransformerEmbeddings handles the model loading
+        self.embedder = SentenceTransformerEmbeddings(
+            model_name=model_name
+        )
+        self._dimension = dimension
 
+    def embed_documents(self, texts):
+        return self.embedder.embed_documents(texts)
 
-class SentenceTransformerEmbedder(EmbeddingInterface):
-    """Uses a local HuggingFace Sentence Transformer model."""
-    def __init__(self):
-        self.model_name = EMBEDDER_MODELS["default"]
-        self.dimension = EMBEDDING_DIMENSIONS["default"]
-        try:
-            self.model = HuggingFaceEmbeddings(
-                model_name=self.model_name,
-                model_kwargs={'device': 'cpu'}  # Use 'cuda' if available
-            )
-            print(f"Loaded SentenceTransformer: {self.model_name}")
-        except Exception as e:
-            print(f"Error loading SentenceTransformer model: {e}")
-            raise
+    def embed_query(self, text):
+        return self.embedder.embed_query(text)
+        
+    def get_dimension(self):
+        return self._dimension
 
-    def get_dimension(self) -> int:
-        return self.dimension
+class OpenAIEmbedder(BaseEmbedder):
+    """Wrapper for OpenAI embedding models."""
+    def __init__(self, model_name, dimension, api_key):
+        if not api_key:
+            raise ValueError("OpenAI API Key not found.")
+            
+        self.embedder = OpenAIEmbeddings(
+            model=model_name,
+            openai_api_key=api_key
+        )
+        self._dimension = dimension
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        return self.model.embed_documents(texts)
+    def embed_documents(self, texts):
+        # OpenAI returns embeddings directly as a list of lists (embeddings for documents)
+        return self.embedder.embed_documents(texts)
 
-    def embed_query(self, text: str) -> List[float]:
-        return self.model.embed_query(text)
+    def embed_query(self, text):
+        # OpenAI returns a single embedding for the query
+        return self.embedder.embed_query(text)
+        
+    def get_dimension(self):
+        return self._dimension
 
-
-class GoogleEmbedder(EmbeddingInterface):
-    """Uses the Google Generative AI embedding API."""
-    def __init__(self):
-        self.model_name = EMBEDDER_MODELS["google"]
-        self.dimension = EMBEDDING_DIMENSIONS["google"]
-        try:
-            self.model = GoogleGenerativeAiEmbeddings(
-                model=self.model_name,
-                google_api_key=GOOGLE_API_KEY
-            )
-            print(f"Loaded GoogleEmbedder: {self.model_name}")
-        except Exception as e:
-            print(f"Error loading GoogleGenerativeAiEmbeddings: {e}")
-            print("Please ensure GOOGLE_API_KEY is set correctly.")
-            raise
-
-    def get_dimension(self) -> int:
-        return self.dimension
-
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        return self.model.embed_documents(texts)
-
-    def embed_query(self, text: str) -> List[float]:
-        return self.model.embed_query(text)
-
-
-# --- Factory Function ---
-
-def get_embedder(provider: str = EMBEDDER_PROVIDER) -> EmbeddingInterface:
+def get_embedder(provider: str) -> BaseEmbedder:
     """
-    Factory function to get the configured embedder
-    based on the 'EMBEDDER_PROVIDER' in app_config.py.
+    Factory function to get the correct embedder implementation based on the provider name.
     """
-    if provider == "google":
-        return GoogleEmbedder()
-    elif provider == "default":
-        return SentenceTransformerEmbedder()
+    if provider == "default":
+        model_name = EMBEDDER_MODELS["default"]
+        dimension = EMBEDDING_DIMENSIONS["default"]
+        print(f"Using default HuggingFace Embedder: {model_name}")
+        return HuggingFaceEmbedder(model_name, dimension)
+    
+    # Logic to support the PubMedBert model
+    elif provider == "PubMedBert":
+        model_name = EMBEDDER_MODELS["PubMedBert"]
+        dimension = EMBEDDING_DIMENSIONS["PubMedBert"]
+        print(f"Using PubMedBert Embedder: {model_name}")
+        return HuggingFaceEmbedder(model_name, dimension)
+
+    elif provider == "openai":
+        model_name = EMBEDDER_MODELS["openai"]
+        dimension = EMBEDDING_DIMENSIONS["openai"]
+        print(f"Using OpenAI Embedder: {model_name}")
+        return OpenAIEmbedder(model_name, dimension, OPENAI_API_KEY)
+    
     else:
         raise ValueError(f"Unknown embedder provider: {provider}")
