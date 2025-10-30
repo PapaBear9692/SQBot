@@ -20,39 +20,36 @@ class DataLoader:
 
     def load_documents(self) -> List[Document]:
         """Loads all .txt and .pdf files from the specified directory."""
-        
-        # Ensure the data directory exists
         if not os.path.exists(self.data_dir):
             print(f"Error: Data directory '{self.data_dir}' not found.")
             return []
 
         print(f"Loading documents from {self.data_dir}...")
-        
-        # Use DirectoryLoader to handle multiple file types
-        # We specify a loader for each file type
-        loader = DirectoryLoader(
+
+        # Load both .pdf and .txt files
+        pdf_loader = DirectoryLoader(
             self.data_dir,
-            glob="**/*", # Load all files in all subdirectories
+            glob="**/*.pdf",
+            loader_cls=PyPDFLoader,
             use_multithreading=True,
             show_progress=True,
-            loader = DirectoryLoader(
-                self.data_dir,
-                loader_cls={
-                    ".pdf": PyPDFLoader,
-                    ".txt": TextLoader
-                }
-            )
-
         )
-        
-        documents = loader.load()
+        txt_loader = DirectoryLoader(
+            self.data_dir,
+            glob="**/*.txt",
+            loader_cls=TextLoader,
+            use_multithreading=True,
+            show_progress=True,
+        )
+
+        documents = pdf_loader.load() + txt_loader.load()
         return documents
 
     def split_documents(self, documents: List[Document]) -> List[Document]:
-        """Splits a list of loaded documents into smaller chunks."""
+        """Splits loaded documents into smaller chunks."""
         if not documents:
             return []
-            
+        
         print(f"Splitting {len(documents)} documents into chunks...")
         chunks = self.text_splitter.split_documents(documents)
         return chunks

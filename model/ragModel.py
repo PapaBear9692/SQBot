@@ -3,7 +3,7 @@ from model.embedderModel import get_embedder
 from model.llmModel import get_llm
 from model.storageModel import PineconeStorage
 from model.core_interface import EmbeddingInterface, LLMInterface, VectorStoreInterface
-from utils.app_config import TOP_K_RESULTS
+from utils.app_config import TOP_K_RESULTS, EMBEDDER_PROVIDER
 
 class RAGModel:
     """
@@ -13,7 +13,7 @@ class RAGModel:
     def __init__(self):
         print("Initializing RAGModel...")
         # Get the configured components from the factories
-        self.embedder: EmbeddingInterface = get_embedder()
+        self.embedder: EmbeddingInterface = get_embedder(EMBEDDER_PROVIDER)
         self.llm: LLMInterface = get_llm()
         self.vector_store: VectorStoreInterface = PineconeStorage()
         
