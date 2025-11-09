@@ -2,47 +2,53 @@ from flask import request, jsonify
 from model.ragModel import RAGModel
 
 # --- Initialization ---
-
-# Initialize the RAG Model. This runs once when the app starts.
-# It pre-loads the LLM, Embedder, and connects to Pinecone.
 try:
     rag_model = RAGModel()
-    print("appController: RAGModel initialized successfully.")
+    print("RAGModel initialized successfully.")
 except Exception as e:
     rag_model = None
-    print(f"FATAL: appController: RAGModel failed to initialize. Error: {e}")
+    print(f" Failed to initialize RAGModel.\nError: {e}")
 
 # --- Route Handler ---
-
 def handle_chat_request():
-    """
-    Handles the POST request from the /ask API endpoint.
-    It gets the user's question, passes it to the RAG model,
-    and returns the generated answer.
-    """
-    # Check if the RAG model loaded correctly
+
     if not rag_model:
         return jsonify({
-            'answer': "Error: The RAG system is not initialized. Please check the server logs."
+            "answer": "RAG system failed to initialize. Check server logs.",
+            "status": "error"
         }), 500
 
-    # Get JSON data from the request
-    data = request.get_json()
-    user_question = data.get('prompt')
+    data = request.get_json(silent=True)
+    user_question = data.get("prompt") if data else None
 
-    if not user_question:
-        return jsonify({'answer': "Error: No prompt provided."}), 400
+    if not user_question or not user_question.strip():
+        return jsonify({
+            "answer": "No prompt provided.",
+            "status": "error"
+        }), 400
 
-    print(f"appController: Received prompt: {user_question}")
+    print(f"Received question: {user_question}")
 
     try:
-        # 1. Get the answer from the RAG model
-        answer, sources = rag_model.generate_answer(user_question)
-        
-        # 2. Return the answer
-        # You can also return 'sources' if you want to display them on the frontend
-        return jsonify({'answer': answer})
-        
+        # Run full retrieval + reasoning
+        result = rag_model.generate_answer(user_question)
+
+        # Unpack
+        answer = result.get("answer")
+        sources = result.get("sources", [])
+        reranked = result.get("reranked", [])
+
+        # Return both the final answer and sources (optional)
+        return jsonify({
+            "status": "success",
+            "answer": answer,
+            "sources": sources,
+            "reranked": reranked
+        })
+
     except Exception as e:
-        print(f"Error in appController.handle_chat_request: {e}")
-        return jsonify({'answer': "An error occurred while processing your request."}), 500
+        print(f"❌ Error in handle_chat_request: {e}")
+        return jsonify({
+            "answer": "An internal error occurred during RAG processing.",
+            "status": "error"
+        }), 500
