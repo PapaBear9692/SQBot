@@ -11,7 +11,11 @@ except Exception as e:
 
 # --- Route Handler ---
 def handle_chat_request():
-
+    """
+    Handles /ask POST requests.
+    Retrieves answer using RAGModel (with hybrid search) and returns
+    the final answer, sources, and reranked candidates.
+    """
     if not rag_model:
         return jsonify({
             "answer": "RAG system failed to initialize. Check server logs.",
@@ -30,24 +34,32 @@ def handle_chat_request():
     print(f"Received question: {user_question}")
 
     try:
-        # Run full retrieval + reasoning
-        result = rag_model.generate_answer(user_question)
+        # Run retrieval + reasoning
+        answer, final_ranked = rag_model.generate_answer(user_question)
+        print(answer)
 
-        # Unpack
-        answer = result.get("answer")
-        sources = result.get("sources", [])
-        reranked = result.get("reranked", [])
+        # Extract a simplified sources list for frontend
+        sources = [
+            {
+                "text": doc.get("text", ""),
+                "summary": doc.get("summary", ""),
+                "topic": doc.get("topic", ""),
+                "source": doc.get("source", ""),
+                "cosine_score": doc.get("cosine_score", None),
+                "rerank_score": doc.get("rerank_score", None)
+            }
+            for doc in final_ranked
+        ]
 
-        # Return both the final answer and sources (optional)
         return jsonify({
             "status": "success",
             "answer": answer,
             "sources": sources,
-            "reranked": reranked
+            "reranked": final_ranked  # full details if needed
         })
 
     except Exception as e:
-        print(f"❌ Error in handle_chat_request: {e}")
+        print(f"Error in handle_chat_request: {e}")
         return jsonify({
             "answer": "An internal error occurred during RAG processing.",
             "status": "error"

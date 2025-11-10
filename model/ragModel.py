@@ -1,64 +1,72 @@
 from typing import Tuple, List, Dict, Any
+import numpy as np
+from sentence_transformers import CrossEncoder
+from sklearn.metrics.pairwise import cosine_similarity
 from model.embedderModel import get_embedder
 from model.llmModel import get_llm
 from model.storageModel import PineconeStorage
-from model.core_interface import EmbeddingInterface, LLMInterface, VectorStoreInterface
-from utils.app_config import TOP_K_RESULTS, EMBEDDER_PROVIDER
+from utils.app_config import EMBEDDER_PROVIDER, TOP_K_RESULTS
 
 class RAGModel:
     """
-    Orchestrates the RAG (Retrieval-Augmented Generation) process.
-    This is the core "Model" in our MVC-like structure.
+    RAGModel with hybrid retrieval:
+    1️⃣ Pinecone top-k
+    2️⃣ Local cosine similarity re-ranking
+    3️⃣ Cross-encoder reranking
     """
     def __init__(self):
-        print("Initializing RAGModel...")
-        # Get the configured components from the factories
-        self.embedder: EmbeddingInterface = get_embedder(EMBEDDER_PROVIDER)
-        self.llm: LLMInterface = get_llm()
-        self.vector_store: VectorStoreInterface = PineconeStorage()
-        
-        # Connect to the Pinecone index immediately
-        # This assumes the index is already created by the dataController
+        print("Initializing RAGModel (hybrid search)...")
+        self.embedder = get_embedder(EMBEDDER_PROVIDER)
+        self.llm = get_llm()
+        self.vector_store = PineconeStorage()
         self.vector_store.connect_to_index()
+        self.reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
         print("RAGModel initialized successfully.")
 
     def generate_answer(self, prompt: str) -> Tuple[str, List[Dict[str, Any]]]:
-        """
-        Retrieves context and generates an answer for a given prompt.
-        
-        Returns:
-            - The generated answer (str).
-            - The retrieved source documents (List[Dict]).
-        """
         try:
-            # 1. Embed the user's prompt (query)
+            # 1️⃣ Embed query
             print(f"Embedding query: '{prompt}'")
-            query_embedding = self.embedder.embed_query(prompt)
-            
-            # 2. Retrieve relevant documents (context)
-            print(f"Querying vector store (top_k={TOP_K_RESULTS})...")
-            context_docs = self.vector_store.query(
-                query_embedding=query_embedding,
-                top_k=TOP_K_RESULTS
-            )
-            
-            if not context_docs:
-                print("No relevant context found.")
-                return "I am sorry, but I could not find any relevant information to answer your question.", []
+            query_vector = self.embedder.embed_query(prompt)
 
-            print(f"Retrieved {len(context_docs)} context documents.")
-            
-            # 3. Call the LLM with the prompt and context
-            # The RAG_PROMPT_TEMPLATE is applied inside the LLM model
-            print("Generating response from LLM...")
-            answer = self.llm.generate_response(
-                prompt=prompt,
-                context=context_docs
-            )
-            
-            print("Response generated.")
-            return answer, context_docs
+            # 2️⃣ Retrieve top-k from Pinecone
+            print(f"Fetching top {TOP_K_RESULTS} candidates from Pinecone...")
+            context_docs = self.vector_store.query(query_vector, top_k=TOP_K_RESULTS)
+
+            if not context_docs:
+                print("No matches found in Pinecone.")
+                return "I could not find relevant information.", []
+
+            # 3️⃣ Local cosine similarity reranking
+            print("Refining candidates with local cosine similarity...")
+            local_ranked = []
+            for doc in context_docs:
+                candidate_vector = np.array(doc.get("embedding", []))
+                if candidate_vector.size == 0:
+                    continue
+                cos_score = cosine_similarity([query_vector], [candidate_vector])[0][0]
+                local_ranked.append({
+                    **doc,
+                    "cosine_score": float(cos_score)
+                })
+            local_ranked.sort(key=lambda x: x["cosine_score"], reverse=True)
+            top_local = local_ranked[:TOP_K_RESULTS]
+
+            # 4️⃣ Cross-encoder reranking
+            print("Applying cross-encoder reranking...")
+            pairs = [(prompt, doc.get("text", "")) for doc in top_local]
+            scores = self.reranker.predict(pairs)
+            for doc, score in zip(top_local, scores):
+                doc["rerank_score"] = float(score)
+            final_ranked = sorted(top_local, key=lambda x: x["rerank_score"], reverse=True)
+
+            # 5️⃣ Call LLM with top context
+            print("Generating final answer from LLM...")
+            llm_context = [{"text": doc.get("text", ""), "summary": doc.get("summary", ""), "topic": doc.get("topic", "")} for doc in final_ranked]
+            answer = self.llm.generate_response(prompt=prompt, context=llm_context)
+
+            return answer, final_ranked
 
         except Exception as e:
             print(f"Error in RAGModel.generate_answer: {e}")
-            return "An error occurred while processing your request. Please try again.", []
+            return "An error occurred while processing your request.", []
