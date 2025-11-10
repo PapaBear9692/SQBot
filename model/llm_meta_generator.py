@@ -1,52 +1,68 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 import json
-
+from utils.app_config import GOOGLE_API_KEY
 
 class LLMMetaGenerator:
-    """
-    Generates semantic metadata (topic, entities, summary) for text chunks using Gemini.
-    """
+    """Generates structured metadata for documents using Gemini."""
 
-    def __init__(self, model_name="gemini-2.5-flash"):
-        # Initialize Gemini LLM
-        self.llm = ChatGoogleGenerativeAI(
-            model=model_name,
-            temperature=0.3,
-            max_output_tokens=200,
-        )
-
-        # Define the metadata prompt
-        self.prompt = PromptTemplate.from_template(
-            """You are a metadata generator for a document embedding system.
-Given the following text chunk, produce a short, well-structured JSON metadata containing:
-- "topic": the main subject or domain of the text
-- "entities": a list of key entities, terms, or important words
-- "summary": a concise 1 sentence description of what this chunk is about
-
-Text Chunk:
-{text}
-
-Return valid JSON only, no explanations.
-"""
-        )
-
-    def generate_metadata(self, text: str) -> dict:
-        """
-        Generate metadata using Gemini for a given text chunk.
-        """
+    def __init__(self):
+        self.model_name = "gemini-2.5-flash-lite"
         try:
-            # Run LLM and format output
-            response = self.llm.invoke(self.prompt.format(text=text))
-            content = response.content if hasattr(response, "content") else str(response)
-
-            # Try parsing LLM output as JSON
-            meta = json.loads(content)
-            if isinstance(meta, dict):
-                return meta
-            else:
-                return {"summary": content}
+            self.llm = ChatGoogleGenerativeAI(
+                model=self.model_name,
+                google_api_key=GOOGLE_API_KEY,
+                temperature=0.3,
+            )
+            print(f"[LLMMetaGenerator] Loaded model: {self.model_name}")
         except Exception as e:
-            print(f"[LLMMetaGenerator] Metadata generation failed: {e}")
-            # Fallback: simple summary snippet
-            return {"summary": text[:150]}
+            print(f"[LLMMetaGenerator] Error loading Gemini model: {e}")
+            raise
+
+        # Build the prompt chain
+        self._setup_chain()
+
+    def _setup_chain(self):
+        prompt_template = """
+        You are a embedding metadata extraction assistant. Analyze the given text and return a compact JSON with:
+        - topic (main subject)
+        - entities (list of key names, brands, editions, etc.)
+        - summary (1 sentence summary of the content)
+        
+        Example output:
+        {{
+          "topic": "Paracetamol Medication",
+          "entities": ["PainRelief 500mg", "Dosage", "Ingredients"],
+          "summary": "Describes usage and side effects of PainRelief 500mg tablets."
+        }}
+        
+        Text:
+        {chunk_text}
+        """
+
+        prompt = PromptTemplate(
+            input_variables=["chunk_text"],
+            template=prompt_template
+        )
+
+        self.chain = prompt | self.llm | StrOutputParser()
+
+    def generate_metadata(self, chunk_text: str) -> dict:
+        try:
+            response = self.chain.invoke({"chunk_text": chunk_text}).strip()
+
+            # Handle code blocks or malformed JSON
+            if response.startswith("```"):
+                response = response.split("```")[1].replace("json", "").strip()
+
+            metadata = json.loads(response)
+            return metadata
+
+        except json.JSONDecodeError:
+            print("[LLMMetaGenerator] JSON parse failed. Raw response:", response)
+            # fallback minimal metadata
+            return {"topic": "Unknown", "entities": [], "summary": "Failed to parse metadata"}
+        except Exception as e:
+            print(f"[LLMMetaGenerator] Error generating metadata: {e}")
+            return {"topic": "Error", "entities": [], "summary": str(e)}

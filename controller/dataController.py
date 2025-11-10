@@ -6,7 +6,7 @@ from model.storageModel import PineconeStorage
 from model.llm_meta_generator import LLMMetaGenerator
 from utils.app_config import EMBEDDER_PROVIDER
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
-
+import time
 
 def run_indexing_pipeline():
 
@@ -67,6 +67,8 @@ def run_indexing_pipeline():
 
             # Generate contextual metadata
             llm_metadata = meta_generator.generate_metadata(chunk.page_content)
+            print(f"{llm_metadata}/n")    
+            time.sleep(10)
 
             # Combine default + LLM metadata
             metadata = {
