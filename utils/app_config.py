@@ -31,7 +31,7 @@ EMBEDDER_MODELS = {
 }
 
 # --- Vector Store Config ---
-PINECONE_INDEX_NAME = "sqbot-index" # <<< IMPORTANT: Change this
+PINECONE_INDEX_NAME = "sqbot-index"
 EMBEDDING_DIMENSIONS = {
     "default": 384,  # all-MiniLM-L6-v2 dimension
     "PubMedBert": 768, # PubMedBert dimension

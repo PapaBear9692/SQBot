@@ -1,9 +1,9 @@
 from typing import List, Dict, Any
-from model.core_interface import LLMInterface
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 from utils.promptTemplate import RAG_PROMPT_TEMPLATE
 from utils.app_config import (
     LLM_PROVIDER,
@@ -14,10 +14,6 @@ from utils.app_config import (
 
 
 def _format_context(context: List[Dict[str, Any]]) -> str:
-    """
-    Formats the retrieved context chunks to include the rich metadata,
-    including the product name, so the LLM can use it in the answer.
-    """
     context_chunks = []
     for doc in context:
         text = doc.get("text", "")
@@ -32,8 +28,7 @@ def _format_context(context: List[Dict[str, Any]]) -> str:
     
     return "\n\n".join(context_chunks)
 
-class GeminiLLM(LLMInterface):
-    """Implementation for Google's Gemini model."""
+class GeminiLLM():
     def __init__(self):
         self.model_name = LLM_MODELS["gemini"]
         try:
@@ -57,18 +52,19 @@ class GeminiLLM(LLMInterface):
         self.chain = prompt | self.llm | StrOutputParser()
 
     def generate_response(self, prompt: str, context: List[Dict[str, Any]]) -> str:
-        # Uses the _format_context function above
         context_str = _format_context(context)
-        return self.chain.invoke({"context": context_str, "question": prompt})
+        return self.chain.invoke({
+            "context": context_str,
+            "question": prompt
+        })
 
-class OpenAILLM(LLMInterface):
-    """Implementation for OpenAI's GPT models."""
+class OpenAILLM():
     def __init__(self):
         self.model_name = LLM_MODELS["openai"]
         try:
             self.llm = ChatOpenAI(
                 model=self.model_name,
-                openai_api_key=OPENAI_API_KEY,
+                api_key=OPENAI_API_KEY,
                 temperature=0.5
             )
             print(f"Loaded OpenAILLM: {self.model_name}")
@@ -85,17 +81,15 @@ class OpenAILLM(LLMInterface):
         self.chain = prompt | self.llm | StrOutputParser()
 
     def generate_response(self, prompt: str, context: List[Dict[str, Any]]) -> str:
-        # Uses the _format_context function above
         context_str = _format_context(context)
-        return self.chain.invoke({"context": context_str, "question": prompt})
+        return self.chain.invoke({
+            "context": context_str,
+            "question": prompt
+        })
 
 # --- Factory Function ---
+def get_llm():
 
-def get_llm() -> LLMInterface:
-    """
-    Factory function to get the configured LLM
-    based on the 'LLM_PROVIDER' in app_config.py.
-    """
     if LLM_PROVIDER == "openai":
         return OpenAILLM()
     elif LLM_PROVIDER == "gemini":

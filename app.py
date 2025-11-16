@@ -15,9 +15,6 @@ app = Flask(__name__, template_folder=TEMPLATE_DIR)
 
 @app.route('/')
 def index():
-    """
-    Serves the main chat interface (views/chat.html).
-    """
     # Pass model info to the frontend
     return render_template(
         'chat.html',
@@ -27,19 +24,12 @@ def index():
 
 @app.route('/ask', methods=['POST'])
 def ask():
-    """
-    API endpoint for handling chat requests.
-    It calls the controller to handle the logic.
-    """
     return handle_chat_request()
 
-# --- Main Execution ---
 
+# --- Main Execution ---
 if __name__ == '__main__':
     print("--- SQBot RAG Application Starting ---")
     print(f"LLM Provider: {LLM_PROVIDER}")
     print(f"Embedder Provider: {EMBEDDER_PROVIDER}")
-    
-    # Run the Flask app
-    # Set debug=False for production
     app.run(debug=True, port=5000)

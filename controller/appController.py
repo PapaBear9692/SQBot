@@ -2,9 +2,6 @@ from flask import request, jsonify
 from model.ragModel import RAGModel
 
 # --- Initialization ---
-
-# Initialize the RAG Model. This runs once when the app starts.
-# It pre-loads the LLM, Embedder, and connects to Pinecone.
 try:
     rag_model = RAGModel()
     print("appController: RAGModel initialized successfully.")
@@ -15,11 +12,6 @@ except Exception as e:
 # --- Route Handler ---
 
 def handle_chat_request():
-    """
-    Handles the POST request from the /ask API endpoint.
-    It gets the user's question, passes it to the RAG model,
-    and returns the generated answer.
-    """
     # Check if the RAG model loaded correctly
     if not rag_model:
         return jsonify({
@@ -29,18 +21,19 @@ def handle_chat_request():
     # Get JSON data from the request
     data = request.get_json()
     user_question = data.get('prompt')
+    print(f"appController: Received prompt: {user_question}")
 
     if not user_question:
         return jsonify({'answer': "Error: No prompt provided."}), 400
 
-    print(f"appController: Received prompt: {user_question}")
-
     try:
         # 1. Get the answer from the RAG model
-        answer, sources = rag_model.generate_answer(user_question)
-        
+        answer, context_docs = rag_model.generate_answer(user_question)
+        print(f"Generated answer: {answer}")
+        for i, doc in enumerate(context_docs):
+            print(f"Context Doc {i+1}: Score={doc['score']}, Text={doc['text'][:100]}...")
+            print(f"----------")
         # 2. Return the answer
-        # You can also return 'sources' if you want to display them on the frontend
         return jsonify({'answer': answer})
         
     except Exception as e:

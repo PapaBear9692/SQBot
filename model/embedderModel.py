@@ -2,19 +2,8 @@ from langchain_community.embeddings import SentenceTransformerEmbeddings
 from langchain_openai import OpenAIEmbeddings
 from utils.app_config import EMBEDDER_MODELS, EMBEDDING_DIMENSIONS, OPENAI_API_KEY
 
-class BaseEmbedder:
-    """Base class for all embedding providers."""
-    def embed_documents(self, texts):
-        raise NotImplementedError
-    
-    def embed_query(self, text):
-        raise NotImplementedError
-        
-    def get_dimension(self):
-        raise NotImplementedError
 
-class HuggingFaceEmbedder(BaseEmbedder):
-    """Wrapper for Sentence Transformer models (including default and PubMedBert)."""
+class OpenSourceEmbedder():
     def __init__(self, model_name, dimension):
         # LangChain's SentenceTransformerEmbeddings handles the model loading
         self.embedder = SentenceTransformerEmbeddings(
@@ -31,8 +20,8 @@ class HuggingFaceEmbedder(BaseEmbedder):
     def get_dimension(self):
         return self._dimension
 
-class OpenAIEmbedder(BaseEmbedder):
-    """Wrapper for OpenAI embedding models."""
+
+class OpenAIEmbedder():
     def __init__(self, model_name, dimension, api_key):
         if not api_key:
             raise ValueError("OpenAI API Key not found.")
@@ -54,22 +43,20 @@ class OpenAIEmbedder(BaseEmbedder):
     def get_dimension(self):
         return self._dimension
 
-def get_embedder(provider: str) -> BaseEmbedder:
-    """
-    Factory function to get the correct embedder implementation based on the provider name.
-    """
+
+def get_embedder(provider: str):
     if provider == "default":
         model_name = EMBEDDER_MODELS["default"]
         dimension = EMBEDDING_DIMENSIONS["default"]
         print(f"Using default HuggingFace Embedder: {model_name}")
-        return HuggingFaceEmbedder(model_name, dimension)
+        return OpenSourceEmbedder(model_name, dimension)
     
     # Logic to support the PubMedBert model
     elif provider == "PubMedBert":
         model_name = EMBEDDER_MODELS["PubMedBert"]
         dimension = EMBEDDING_DIMENSIONS["PubMedBert"]
         print(f"Using PubMedBert Embedder: {model_name}")
-        return HuggingFaceEmbedder(model_name, dimension)
+        return OpenSourceEmbedder(model_name, dimension)
 
     elif provider == "openai":
         model_name = EMBEDDER_MODELS["openai"]
