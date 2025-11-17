@@ -1,0 +1,9 @@
+langchain==0.3.26
+langchain-community==0.3.26
+langchain-pinecone==0.2.8
+langchain-huggingface==0.1.2
+langchain-google-genai
+flask
+python-dotenv
+sentence-transformers
+pinecone

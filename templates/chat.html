@@ -2,63 +2,98 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SQBot - Medical Chat</title>
+    <!-- This viewport tag is essential for mobile-first design -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SQBot</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* A simple spinning loader */
+        /* Import a clean font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            /* Prevents bounce on mobile */
+            overflow: hidden;
+        }
+
+        /* Custom accent color for the loader */
         .loader {
             border: 4px solid #f3f3f3; /* Light grey */
-            border-top: 4px solid #3498db; /* Blue */
+            border-top-color: #48B95F; /* Accent Green */
             border-radius: 50%;
             width: 24px;
             height: 24px;
             animation: spin 1s linear infinite;
         }
+        
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        /* Custom scrollbar for a cleaner look */
+        #chat-box::-webkit-scrollbar {
+            width: 6px;
+        }
+        #chat-box::-webkit-scrollbar-thumb {
+            background-color: #d1d5db;
+            border-radius: 3px;
+        }
     </style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center h-screen">
+<body class="bg-gray-200 flex items-center justify-center h-screen">
 
-    <div class="w-full max-w-3xl h-[90vh] bg-white rounded-lg shadow-xl flex flex-col">
-        <div class="bg-blue-600 text-white p-4 rounded-t-lg shadow-md">
-            <h1 class="text-2xl font-bold text-center">Medical Chatbot</h1>
-            <p class="text-xs text-center text-blue-100">
+    <!-- 
+      Mobile/Desktop Container
+      - On mobile (default): w-full h-full (fills the screen)
+      - On desktop (sm: and up): Simulates a phone screen
+    -->
+    <div class="w-full h-full sm:w-[420px] sm:h-[90vh] sm:max-h-[850px] bg-white sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+        
+        <!-- Header -->
+        <div class="bg-[#48B95F] text-white p-4 shadow-md flex-shrink-0">
+            <h1 class="text-xl font-bold text-center">SQBot</h1>
+            <p class="text-xs text-center text-green-100">
                 LLM: {{ llm_provider }} | Embedder: {{ embedder_provider }}
             </p>
         </div>
 
-        <div id="chat-box" class="flex-1 p-6 overflow-y-auto space-y-4">
+        <!-- Chat Messages Box -->
+        <div id="chat-box" class="flex-1 p-4 overflow-y-auto space-y-4 bg-white">
+            <!-- Bot Welcome Message -->
             <div class="flex justify-start">
-                <div class="bg-gray-200 text-gray-800 p-3 rounded-lg max-w-lg shadow">
+                <div class="bg-gray-100 text-gray-900 p-3 rounded-2xl max-w-xs sm:max-w-sm shadow-sm">
                     <p>Hello! I am a medical assistant. Ask me a question about your documents.</p>
                 </div>
             </div>
-            </div>
+            <!-- Messages will be added here by JS -->
+        </div>
         
-        <div id="loading-indicator" class="p-4 text-center text-gray-500 hidden items-center justify-center space-x-2">
+        <!-- Loading Indicator -->
+        <div id="loading-indicator" class="p-3 text-center text-gray-500 hidden items-center justify-center space-x-2 bg-white">
             <div class="loader"></div>
             <span>Thinking...</span>
         </div>
 
-        <div class="p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+        <!-- Input Area -->
+        <div class="p-3 border-t border-gray-200 bg-gray-50 flex-shrink-0">
             <form id="chat-form" class="flex items-center space-x-3">
                 <input 
                     type="text" 
                     id="user-prompt" 
                     placeholder="Type your question..." 
-                    class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    class="flex-1 py-3 px-5 bg-gray-100 border-transparent rounded-full focus:outline-none focus:ring-2 focus:ring-[#48B95F]"
                     autocomplete="off"
                 >
                 <button 
                     type="submit"
                     id="send-button"
-                    class="bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                    class="bg-[#48B95F] text-white p-3 rounded-full shadow-md hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-[#48B95F] disabled:opacity-50 transition-all"
                 >
-                    Send
+                    <!-- Paper plane send icon -->
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.875L6 12zm0 0h7.5" />
+                    </svg>
                 </button>
             </form>
         </div>
@@ -78,39 +113,29 @@
                 const prompt = userPromptInput.value.trim();
                 if (!prompt) return;
 
-                // Disable form and show loading
                 setLoadingState(true);
-
-                // Add user message to chat
                 addMessage(prompt, 'user');
-                
-                // Clear input
                 userPromptInput.value = '';
 
                 try {
-                    // Send prompt to backend /ask endpoint
                     const response = await fetch('/ask', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ prompt: prompt }),
                     });
 
                     if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
+                        const errData = await response.json();
+                        throw new Error(errData.answer || `HTTP error! status: ${response.status}`);
                     }
 
                     const data = await response.json();
-                    
-                    // Add bot response to chat
                     addMessage(data.answer, 'bot');
 
                 } catch (error) {
                     console.error('Error fetching response:', error);
-                    addMessage('Sorry, something went wrong. Please check the console and try again.', 'bot');
+                    addMessage(`Sorry, something went wrong: ${error.message}`, 'bot');
                 } finally {
-                    // Re-enable form and hide loading
                     setLoadingState(false);
                 }
             });
@@ -120,12 +145,12 @@
                     userPromptInput.disabled = true;
                     sendButton.disabled = true;
                     loadingIndicator.classList.remove('hidden');
-                    loadingIndicator.classList.add('flex'); // Show loading
+                    loadingIndicator.classList.add('flex');
                 } else {
                     userPromptInput.disabled = false;
                     sendButton.disabled = false;
                     loadingIndicator.classList.add('hidden');
-                    loadingIndicator.classList.remove('flex'); // Hide loading
+                    loadingIndicator.classList.remove('flex');
                     userPromptInput.focus();
                 }
             }
@@ -135,15 +160,24 @@
                 messageContainer.classList.add('flex');
                 
                 const messageBubble = document.createElement('div');
-                messageBubble.classList.add('p-3', 'rounded-lg', 'max-w-lg', 'shadow');
-                messageBubble.innerText = text; // Safely set text
+                // --- UPDATED BUBBLE STYLES ---
+                messageBubble.classList.add(
+                    'p-3', 
+                    'rounded-2xl', // Softer corners
+                    'max-w-xs', 
+                    'sm:max-w-sm', // Constrained width
+                    'shadow-sm'
+                );
+                messageBubble.innerText = text;
 
                 if (sender === 'user') {
                     messageContainer.classList.add('justify-end');
-                    messageBubble.classList.add('bg-blue-600', 'text-white');
+                    // --- UPDATED USER BUBBLE COLOR ---
+                    messageBubble.classList.add('bg-[#48B95F]', 'text-white');
                 } else {
                     messageContainer.classList.add('justify-start');
-                    messageBubble.classList.add('bg-gray-200', 'text-gray-800');
+                    // --- UPDATED BOT BUBBLE COLOR ---
+                    messageBubble.classList.add('bg-gray-100', 'text-gray-900');
                 }
                 
                 messageContainer.appendChild(messageBubble);
@@ -156,3 +190,4 @@
     </script>
 </body>
 </html>
+

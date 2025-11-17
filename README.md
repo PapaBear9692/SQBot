@@ -71,3 +71,34 @@ Run the Web Application:
 Access the App:
     Open your web browser and go to http://127.0.0.1:5000 
     (or http://127.0.0.1:8000 if using gunicorn).
+
+
+
+
+SQBot/
+│
+├── app.py                        # main entry point (Flask app)
+│
+├── controller/
+│   └── appController.py            #handle app/request/chat flow
+|   └── dataController.py           #handle data controll (upload data to pinecone)
+│
+├── model/
+│   ├── core_interface.py           #include interface 
+│   ├── dataLoaderModel.py          #load PDF/text files
+│   ├── embedderModel.py            #embed data for uploading and embed prompt for searching
+│   └── llmModel.py                 #call llm models for response generation
+|   ├── ragModel.py                 #use other model to orchastrate
+│   └── storageModel.py             #handle pinecone functions
+│
+├── views/
+│   └── chat.html (includes infile javascript and css)  
+│
+├── utils/
+│   ├── promptTemplates.py       # system prompt & formatting
+│   ├── environment.yml          
+│   └── app_config.py             #load API keys & environment setup
+│
+├── data/                         # your knowledge base / PDFs
+│
+└── .env 

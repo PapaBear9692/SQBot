@@ -1,11 +1,10 @@
 from typing import List, Dict, Any
-from model.core_interface import LLMInterface
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 from utils.promptTemplate import RAG_PROMPT_TEMPLATE
-
 from utils.app_config import (
     LLM_PROVIDER,
     LLM_MODELS,
@@ -14,17 +13,30 @@ from utils.app_config import (
 )
 
 
+def _format_context(context: List[Dict[str, Any]]) -> str:
+    context_chunks = []
+    for doc in context:
+        text = doc.get("text", "")
+        # --- Retrieve product_name from metadata (ADDED) ---
+        product = doc.get("product_name", "Unknown Product") 
+        page = doc.get("page", 0)
+        
+        # Prepend the rich metadata header to the chunk
+        # This header informs the LLM exactly where the information came from.
+        chunk_header = f"--- Context (Product: {product}, Page: {page}) ---"
+        context_chunks.append(f"{chunk_header}\n{text}")
+    
+    return "\n\n".join(context_chunks)
 
-class GeminiLLM(LLMInterface):
-    """Implementation for Google's Gemini model."""
+class GeminiLLM():
     def __init__(self):
         self.model_name = LLM_MODELS["gemini"]
         try:
             self.llm = ChatGoogleGenerativeAI(
                 model=self.model_name,
                 google_api_key=GOOGLE_API_KEY,
-                temperature=0.4,
-                convert_system_message_to_human=True  # For compatibility
+                temperature=0.5,
+                convert_system_message_to_human=True
             )
             print(f"Loaded GeminiLLM: {self.model_name}")
         except Exception as e:
@@ -33,7 +45,6 @@ class GeminiLLM(LLMInterface):
         self._setup_chain()
 
     def _setup_chain(self):
-        """Sets up the LangChain chain for RAG."""
         prompt = PromptTemplate(
             template=RAG_PROMPT_TEMPLATE,
             input_variables=["context", "question"]
@@ -41,19 +52,20 @@ class GeminiLLM(LLMInterface):
         self.chain = prompt | self.llm | StrOutputParser()
 
     def generate_response(self, prompt: str, context: List[Dict[str, Any]]) -> str:
-        context_str = "\n\n".join([doc.get("text", "") for doc in context])
-        return self.chain.invoke({"context": context_str, "question": prompt})
+        context_str = _format_context(context)
+        return self.chain.invoke({
+            "context": context_str,
+            "question": prompt
+        })
 
-
-class OpenAILLM(LLMInterface):
-    """Implementation for OpenAI's GPT models."""
+class OpenAILLM():
     def __init__(self):
         self.model_name = LLM_MODELS["openai"]
         try:
             self.llm = ChatOpenAI(
                 model=self.model_name,
                 api_key=OPENAI_API_KEY,
-                temperature=0.3
+                temperature=0.5
             )
             print(f"Loaded OpenAILLM: {self.model_name}")
         except Exception as e:
@@ -62,7 +74,6 @@ class OpenAILLM(LLMInterface):
         self._setup_chain()
 
     def _setup_chain(self):
-        """Sets up the LangChain chain for RAG."""
         prompt = PromptTemplate(
             template=RAG_PROMPT_TEMPLATE,
             input_variables=["context", "question"]
@@ -70,17 +81,15 @@ class OpenAILLM(LLMInterface):
         self.chain = prompt | self.llm | StrOutputParser()
 
     def generate_response(self, prompt: str, context: List[Dict[str, Any]]) -> str:
-        context_str = "\n\n".join([doc.get("text", "") for doc in context])
-        return self.chain.invoke({"context": context_str, "question": prompt})
-
+        context_str = _format_context(context)
+        return self.chain.invoke({
+            "context": context_str,
+            "question": prompt
+        })
 
 # --- Factory Function ---
+def get_llm():
 
-def get_llm() -> LLMInterface:
-    """
-    Factory function to get the configured LLM
-    based on the 'LLM_PROVIDER' in app_config.py.
-    """
     if LLM_PROVIDER == "openai":
         return OpenAILLM()
     elif LLM_PROVIDER == "gemini":
