@@ -5,17 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <!-- Favicon -->
-    <link rel="icon" type="image/png" href="{{ url_for('static', path='img/logo.png') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo.png') }}">
 
     <title>Medicine AI Assistant</title>
 
-    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <!-- Pass bot & user avatar URLs to JS -->
     <div class="container"
-         data-bot-avatar="{{ url_for('static', path='img/logo.png') }}"
-         data-user-avatar="{{ url_for('static', path='img/user.png') }}">
+         data-bot-avatar="{{ url_for('static', filename='img/logo.png') }}"
+         data-user-avatar="{{ url_for('static', filename='img/user.png') }}">
 
         <!-- Sidebar (chat history like ChatGPT) -->
         <aside class="sidebar">
@@ -48,7 +48,7 @@
                            class="brand-link"
                            target="_blank"
                            rel="noopener">
-                            <img src="{{ url_for('static', path='img/logo1.png') }}"
+                            <img src="{{ url_for('static', filename='img/logo1.png') }}"
                                  alt="Square Pharmaceuticals PLC."
                                  class="brand-logo">
                         </a>
@@ -59,7 +59,7 @@
                     </div>
 
                     <div class="header-right">
-                        <img src="{{ url_for('static', path='img/logo2.png') }}"
+                        <img src="{{ url_for('static', filename='img/logo2.png') }}"
                              alt="Square Group"
                              class="second-logo">
 
@@ -107,7 +107,7 @@
     </div>
 
     <!-- Load External JS -->
-    <script src="{{ url_for('static', path='js/marked.min.js') }}"></script>
-    <script src="{{ url_for('static', path='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

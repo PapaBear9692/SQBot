@@ -143,7 +143,7 @@ function renderWelcomeMessage() {
     const note = document.createElement("span");
     note.className = "message-note";
     note.textContent =
-        "⚠️ This service provides general information only and is not a substitute for professional medicine advice. Please consult a registered healthcare professional for medicine related queries.";
+        "⚠️ This service provides general information only and is not a substitute for professional medical advice. Please consult a registered healthcare professional for medical decisions.";
 
     const p = document.createElement("p");
     p.textContent =
@@ -341,12 +341,12 @@ async function handleSubmit(event) {
     scrollToBottom();
 
     try {
-        const response = await fetch("/api/chat", {
+        const formData = new FormData();
+        formData.append("msg", text);
+
+        const response = await fetch("/get", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ msg: text })
+            body: formData
         });
 
         if (!response.ok) {
@@ -357,20 +357,10 @@ async function handleSubmit(event) {
 
         typingDiv.remove();
 
-        if (!data.ok) {
-            const errorMsg =
-                (data.error && data.error.message) ||
-                "Sorry, there was an error contacting the server.";
-            addMessageToUI("bot", errorMsg);
-            addMessageToConversation("bot", errorMsg);
-            return;
-        }
-
         const answer =
-            data.answer || "Sorry, I couldn't generate a response.";
+            data.response || data.answer || "Sorry, I couldn't generate a response.";
         addMessageToUI("bot", answer);
         addMessageToConversation("bot", answer);
-
     } catch (error) {
         console.error("Error:", error);
         typingDiv.remove();
