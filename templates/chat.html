@@ -3,156 +3,111 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SQBot - Medical Chat</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* A simple spinning loader */
-        .loader {
-            border: 4px solid #f3f3f3; /* Light grey */
-            border-top: 4px solid #3498db; /* Blue */
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', path='img/logo.png') }}">
+
+    <title>Medicine AI Assistant</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
 </head>
-<body class="bg-gray-100 flex items-center justify-center h-screen">
+<body>
+    <!-- Pass bot & user avatar URLs to JS -->
+    <div class="container"
+         data-bot-avatar="{{ url_for('static', path='img/logo.png') }}"
+         data-user-avatar="{{ url_for('static', path='img/user.png') }}">
 
-    <div class="w-full max-w-3xl h-[90vh] bg-white rounded-lg shadow-xl flex flex-col">
-        <div class="bg-blue-600 text-white p-4 rounded-t-lg shadow-md">
-            <h1 class="text-2xl font-bold text-center">Medical Chatbot</h1>
-            <p class="text-xs text-center text-blue-100">
-                LLM: {{ llm_provider }} | Embedder: {{ embedder_provider }}
-            </p>
-        </div>
+        <!-- Sidebar (chat history like ChatGPT) -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <button id="newChatButton" class="new-chat-btn">
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M10 3a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H4a1 1 0 0 1 0-2h5V4a1 1 0 0 1 1-1z"></path>
+                    </svg>
+                    <span>New chat</span>
+                </button>
+            </div>
 
-        <div id="chat-box" class="flex-1 p-6 overflow-y-auto space-y-4">
-            <div class="flex justify-start">
-                <div class="bg-gray-200 text-gray-800 p-3 rounded-lg max-w-lg shadow">
-                    <p>Hello! I am a medical assistant. Ask me a question about your documents.</p>
+            <div class="sidebar-body">
+                <h2 class="sidebar-title">Chats</h2>
+                <div id="historyList" class="history-list">
+                    <!-- Chat history items will be injected here -->
                 </div>
             </div>
-            </div>
-        
-        <div id="loading-indicator" class="p-4 text-center text-gray-500 hidden items-center justify-center space-x-2">
-            <div class="loader"></div>
-            <span>Thinking...</span>
-        </div>
+        </aside>
 
-        <div class="p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
-            <form id="chat-form" class="flex items-center space-x-3">
-                <input 
-                    type="text" 
-                    id="user-prompt" 
-                    placeholder="Type your question..." 
-                    class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    autocomplete="off"
-                >
-                <button 
-                    type="submit"
-                    id="send-button"
-                    class="bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                >
-                    Send
-                </button>
-            </form>
+        <!-- Main chat panel -->
+        <div class="main-panel">
+
+            <!-- Header -->
+            <header class="header">
+                <div class="header-content">
+
+                    <div class="brand-group">
+                        <a href="https://www.squarepharma.com.bd/"
+                           class="brand-link"
+                           target="_blank"
+                           rel="noopener">
+                            <img src="{{ url_for('static', path='img/logo1.png') }}"
+                                 alt="Square Pharmaceuticals PLC."
+                                 class="brand-logo">
+                        </a>
+                        <div class="title-block">
+                            <h1 class="app-title">Medicine Chatbot</h1>
+                            <p class="app-subtitle">AI-powered medicine information assistant</p>
+                        </div>
+                    </div>
+
+                    <div class="header-right">
+                        <img src="{{ url_for('static', path='img/logo2.png') }}"
+                             alt="Square Group"
+                             class="second-logo">
+
+                        <!-- Mobile sidebar toggle -->
+                        <button class="sidebar-toggle" type="button" aria-label="Toggle chat history">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M4 7h16v2H4V7zm0 5h16v2H4v-2zm0 5h16v2H4v-2z"></path>
+                            </svg>
+                        </button>
+                    </div>
+
+                </div>
+            </header>
+
+            <!-- Chat Container -->
+            <main class="chat-container">
+                <section class="chat-messages" id="chatMessages" aria-live="polite">
+                    <!-- Messages are rendered dynamically via JS (including welcome message) -->
+                </section>
+
+                <!-- Input Area -->
+                <section class="input-container">
+                    <form id="chatForm" class="input-form" autocomplete="off">
+                        <label for="messageInput" class="visually-hidden">Ask a medicine-related question</label>
+                        <input
+                            type="text"
+                            id="messageInput"
+                            placeholder="Ask a medicine-related question…"
+                            required>
+                        <button type="submit" id="sendButton">
+                            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                <path d="M2.5 10.2l15-7.2-3.6 14.4-4-4-4.8-3.2z" fill="currentColor"/>
+                            </svg>
+                            <span>Send</span>
+                        </button>
+                    </form>
+                </section>
+
+            </main>
+
+            <footer class="chat-footer">
+                <p>© 2025 <a href="https://www.squarepharma.com.bd" target="_blank" rel="noopener">Square Pharmaceuticals PLC.</a> All rights reserved.</p>
+            </footer>
         </div>
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const chatForm = document.getElementById('chat-form');
-            const userPromptInput = document.getElementById('user-prompt');
-            const chatBox = document.getElementById('chat-box');
-            const loadingIndicator = document.getElementById('loading-indicator');
-            const sendButton = document.getElementById('send-button');
-
-            chatForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                
-                const prompt = userPromptInput.value.trim();
-                if (!prompt) return;
-
-                // Disable form and show loading
-                setLoadingState(true);
-
-                // Add user message to chat
-                addMessage(prompt, 'user');
-                
-                // Clear input
-                userPromptInput.value = '';
-
-                try {
-                    // Send prompt to backend /ask endpoint
-                    const response = await fetch('/ask', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ prompt: prompt }),
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-
-                    const data = await response.json();
-                    
-                    // Add bot response to chat
-                    addMessage(data.answer, 'bot');
-
-                } catch (error) {
-                    console.error('Error fetching response:', error);
-                    addMessage('Sorry, something went wrong. Please check the console and try again.', 'bot');
-                } finally {
-                    // Re-enable form and hide loading
-                    setLoadingState(false);
-                }
-            });
-
-            function setLoadingState(isLoading) {
-                if (isLoading) {
-                    userPromptInput.disabled = true;
-                    sendButton.disabled = true;
-                    loadingIndicator.classList.remove('hidden');
-                    loadingIndicator.classList.add('flex'); // Show loading
-                } else {
-                    userPromptInput.disabled = false;
-                    sendButton.disabled = false;
-                    loadingIndicator.classList.add('hidden');
-                    loadingIndicator.classList.remove('flex'); // Hide loading
-                    userPromptInput.focus();
-                }
-            }
-
-            function addMessage(text, sender) {
-                const messageContainer = document.createElement('div');
-                messageContainer.classList.add('flex');
-                
-                const messageBubble = document.createElement('div');
-                messageBubble.classList.add('p-3', 'rounded-lg', 'max-w-lg', 'shadow');
-                messageBubble.innerText = text; // Safely set text
-
-                if (sender === 'user') {
-                    messageContainer.classList.add('justify-end');
-                    messageBubble.classList.add('bg-blue-600', 'text-white');
-                } else {
-                    messageContainer.classList.add('justify-start');
-                    messageBubble.classList.add('bg-gray-200', 'text-gray-800');
-                }
-                
-                messageContainer.appendChild(messageBubble);
-                chatBox.appendChild(messageContainer);
-                
-                // Scroll to bottom
-                chatBox.scrollTop = chatBox.scrollHeight;
-            }
-        });
-    </script>
+    <!-- Load External JS -->
+    <script src="{{ url_for('static', path='js/marked.min.js') }}"></script>
+    <script src="{{ url_for('static', path='js/main.js') }}"></script>
 </body>
 </html>
