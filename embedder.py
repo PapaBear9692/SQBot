@@ -15,6 +15,10 @@ from pinecone import Pinecone, ServerlessSpec
 ROOT_DIR = Path(__file__).resolve().parent
 ENV_PATH = ROOT_DIR / ".env"
 
+# cache lines
+CACHE_DIR = ROOT_DIR / "model_cache"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
 EMBED_MODEL_NAME = "pritamdeka/S-PubMedBert-MS-MARCO"
 GEMINI_MODEL_NAME = "models/gemini-2.5-flash"
 
@@ -39,6 +43,7 @@ def init_settings_and_storage():
     Settings.embed_model = HuggingFaceEmbedding(
         model_name=EMBED_MODEL_NAME,
         device="cpu",  # change to "cuda" if you have GPU
+        cache_folder=str(CACHE_DIR),
     )
 
     # LLM
