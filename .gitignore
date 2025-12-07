@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+model_cache
+/model_cache/*
+
 # C extensions
 *.so
 

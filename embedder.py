@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 from llama_index.core import Settings, StorageContext
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.llms.gemini import Gemini
+from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone, ServerlessSpec
@@ -19,10 +19,10 @@ ENV_PATH = ROOT_DIR / ".env"
 CACHE_DIR = ROOT_DIR / "model_cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-EMBED_MODEL_NAME = "pritamdeka/S-PubMedBert-MS-MARCO"
+EMBED_MODEL_NAME = "abhinand/MedEmbed-base-v0.1"
 GEMINI_MODEL_NAME = "models/gemini-2.5-flash"
 
-PINECONE_INDEX_NAME = "medicine-chatbot-sample-data-llama-v1"
+PINECONE_INDEX_NAME = "medicine-chatbot-llamaindex-medembed"
 PINECONE_CLOUD = "aws"
 PINECONE_REGION = "us-east-1"
 PINECONE_NAMESPACE = None
@@ -47,7 +47,7 @@ def init_settings_and_storage():
     )
 
     # LLM
-    Settings.llm = Gemini(
+    Settings.llm = GoogleGenAI(
         model=GEMINI_MODEL_NAME,
         api_key=google_api_key,
         temperature=0.5,
