@@ -1,15 +1,16 @@
-# embedder.py
+# app_config.py
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-
+from llama_index.core.llms import ChatMessage
 from llama_index.core import Settings, StorageContext
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone, ServerlessSpec
+from flask import session
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -20,7 +21,7 @@ CACHE_DIR = ROOT_DIR / "model_cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 EMBED_MODEL_NAME = "abhinand/MedEmbed-base-v0.1"
-GEMINI_MODEL_NAME = "models/gemini-2.5-flash"
+GEMINI_MODEL_NAME = "models/gemini-1.5-flash"
 
 PINECONE_INDEX_NAME = "medicine-chatbot-llamaindex-medembed"
 PINECONE_CLOUD = "aws"
@@ -94,3 +95,34 @@ def init_settings_and_storage():
 
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     return storage_context
+
+
+def rewrite_query(history_msgs, user_msg: str) -> str:
+    # heuristic: if short or referential, rewrite; else use as is
+    if len(user_msg.split()) > 5:
+        return user_msg
+
+    system_prompt = (
+        "You rewrite the users message for better semantic search (using embedding) based on the history. "
+        "Always include the specific medicine (Brand name, not generic only) or condition mentioned earlier (if relevant)."
+        "If the message is clear and specific or unrelated to previous message, return it unchanged."
+        "Keep it concise. response in 1 sentence." 
+    )
+    messages = [ChatMessage(role="system", content=system_prompt)]
+    messages.extend(history_msgs)
+    messages.append(ChatMessage(role="user", content=f"Rewrite this: {user_msg!r}"))
+
+    resp = Settings.llm.chat(messages)
+    return resp.message.content.strip()
+
+
+def get_history_messages():
+    hist = session.get("history", [])
+    # hist is a list of dicts: {"role": "user"/"assistant", "content": "..."}
+    return [ChatMessage(role=h["role"], content=h["content"]) for h in hist]
+
+def add_to_history(role, content):
+    hist = session.get("history", [])
+    hist.append({"role": role, "content": content})
+    # keep last N turns
+    session["history"] = hist[-8:]
