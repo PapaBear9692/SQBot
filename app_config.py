@@ -5,8 +5,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from llama_index.core import Settings, StorageContext
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.llms.google_genai import GoogleGenAI
-from llama_index.core.node_parser import SentenceSplitter
+# from llama_index.llms.google_genai import GoogleGenAI
+from llama_index.llms.groq import Groq
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone, ServerlessSpec
 
@@ -18,7 +18,9 @@ CACHE_DIR = ROOT_DIR / "model_cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 EMBED_MODEL_NAME = "abhinand/MedEmbed-base-v0.1"
-GEMINI_MODEL_NAME = "models/gemini-2.5-flash-lite"
+EMBEDDING_DIM = 768
+GEMINI_MODEL_NAME = "models/gemini-2.5-flash"
+GROQ_MODEL_NAME =  "llama-3.1-8b-instant" #"qwen/qwen3-32b" #"llama-3.3-70b-versatile"
 
 PINECONE_INDEX_NAME = "medicine-chatbot-llamaindex-medembed"
 PINECONE_CLOUD = "aws"
@@ -33,8 +35,9 @@ def init_settings_and_storage():
 
     pinecone_api_key = os.getenv("PINECONE_API_KEY")
     google_api_key = os.getenv("GOOGLE_API_KEY")
+    groq_api_key = os.getenv("GROQ_API_KEY")
 
-    if not pinecone_api_key or not google_api_key:
+    if not pinecone_api_key or not google_api_key or not groq_api_key:
         raise ValueError("Missing PINECONE_API_KEY or GOOGLE_API_KEY in .env")
 
     # Embedding model
@@ -45,22 +48,19 @@ def init_settings_and_storage():
     )
 
     # LLM
-    Settings.llm = GoogleGenAI(
-        model=GEMINI_MODEL_NAME,
-        api_key=google_api_key,
+
+    # Settings.llm = GoogleGenAI(
+    #     model=GEMINI_MODEL_NAME,
+    #     api_key=google_api_key,
+    #     temperature=0.5,
+    # )
+
+    Settings.llm = Groq(
+        model=GROQ_MODEL_NAME,
+        api_key=groq_api_key,
         temperature=0.5,
     )
 
-    # Automatic chunking / node parsing
-    Settings.node_parser = SentenceSplitter(
-        chunk_size=512,    # max characters per chunk (tune as needed)
-        chunk_overlap=50,  # overlap between chunks for context continuity
-    )
-
-    # Detect embedding dimension
-    dummy_embed = Settings.embed_model.get_text_embedding("hello world")
-    embedding_dim = len(dummy_embed)
-    print(f"Embedding dimension: {embedding_dim}")
 
     # Pinecone setup
     pc = Pinecone(api_key=pinecone_api_key)
@@ -73,7 +73,7 @@ def init_settings_and_storage():
         print(f"Creating Pinecone index '{PINECONE_INDEX_NAME}'...")
         pc.create_index(
             name=PINECONE_INDEX_NAME,
-            dimension=embedding_dim,
+            dimension=EMBEDDING_DIM,
             metric="cosine",
             spec=ServerlessSpec(
                 cloud=PINECONE_CLOUD,

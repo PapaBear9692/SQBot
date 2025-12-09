@@ -7,11 +7,13 @@ from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.core import VectorStoreIndex
 from llama_index.core.prompts import PromptTemplate
 from app_config import init_settings_and_storage
-from prompt import PROMPT_TEMPLATE
+from prompt import PROMPT_TEMPLATE, CONDENSE_PROMPT
+
 
 load_dotenv()
 
 text_qa_template = PromptTemplate(PROMPT_TEMPLATE)
+condense_prompt = PromptTemplate(CONDENSE_PROMPT)
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY") or secrets.token_hex(32)
@@ -23,11 +25,12 @@ vector_store = storage_context.vector_store
 index = VectorStoreIndex.from_vector_store(vector_store)
 memory = ChatMemoryBuffer.from_defaults(token_limit=2048)
 chat_engine = index.as_chat_engine(
-    chat_mode="condense_question",  # rewrites follow-ups like "dosage?" into full questions
+    chat_mode="condense_question",  
     memory=memory,
     text_qa_template=text_qa_template,
-    similarity_top_k=7,
+    similarity_top_k=5,
     response_mode="compact",
+    condense_question_promp=condense_prompt,
 )
 
 @app.route("/")
