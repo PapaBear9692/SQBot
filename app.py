@@ -42,7 +42,6 @@ def chat_route():
         return jsonify({"response": "Please enter a question."})
 
     try:
-
         response_obj = chat_engine.chat(user_msg)
         answer = (str(response_obj) if response_obj is not None else "").strip()
         if not answer:
