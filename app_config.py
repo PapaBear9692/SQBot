@@ -21,7 +21,7 @@ CACHE_DIR = ROOT_DIR / "model_cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 EMBED_MODEL_NAME = "abhinand/MedEmbed-base-v0.1"
-GEMINI_MODEL_NAME = "models/gemini-1.5-flash"
+GEMINI_MODEL_NAME = "models/gemini-2.5-flash"
 
 PINECONE_INDEX_NAME = "medicine-chatbot-llamaindex-medembed"
 PINECONE_CLOUD = "aws"
@@ -104,8 +104,9 @@ def rewrite_query(history_msgs, user_msg: str) -> str:
 
     system_prompt = (
         "You rewrite the users message for better semantic search (using embedding) based on the history. "
-        "Always include the specific medicine (Brand name, not generic only) or condition mentioned earlier (if relevant)."
         "If the message is clear and specific or unrelated to previous message, return it unchanged."
+        "Always include the specific medicine (Brand name, not generic only) or condition mentioned earlier if relevant."
+        "If a new drug is mentioned, dont include previous history."
         "Keep it concise. response in 1 sentence." 
     )
     messages = [ChatMessage(role="system", content=system_prompt)]
