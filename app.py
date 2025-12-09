@@ -3,16 +3,10 @@ import secrets
 
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify
-
+from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.core import VectorStoreIndex
 from llama_index.core.prompts import PromptTemplate
-
-from app_config import (
-    init_settings_and_storage,
-    rewrite_query,
-    get_history_messages,
-    add_to_history,
-)
+from app_config import init_settings_and_storage
 from prompt import PROMPT_TEMPLATE
 
 load_dotenv()
@@ -27,12 +21,14 @@ storage_context = init_settings_and_storage()
 vector_store = storage_context.vector_store
 
 index = VectorStoreIndex.from_vector_store(vector_store)
-query_engine = index.as_query_engine(
-    similarity_top_k=5,
-    response_mode="compact",
+memory = ChatMemoryBuffer.from_defaults(token_limit=4096)
+chat_engine = index.as_chat_engine(
+    chat_mode="condense_question",  # rewrites follow-ups like "dosage?" into full questions
+    memory=memory,
     text_qa_template=text_qa_template,
+    similarity_top_k=7,
+    response_mode="compact",
 )
-
 
 @app.route("/")
 def index_route():
@@ -47,15 +43,10 @@ def chat_route():
 
     try:
 
-        history_msgs = get_history_messages()
-        rewritten = rewrite_query(history_msgs, user_msg)
-        response_obj = query_engine.query(str(rewritten))
+        response_obj = chat_engine.chat(user_msg)
         answer = (str(response_obj) if response_obj is not None else "").strip()
         if not answer:
             answer = "I could not generate a response."
-
-        add_to_history("user", user_msg)
-        add_to_history("assistant", answer)
 
         sources = []
         for sn in getattr(response_obj, "source_nodes", []) or []:
