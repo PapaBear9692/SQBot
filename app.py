@@ -21,7 +21,7 @@ storage_context = init_settings_and_storage()
 vector_store = storage_context.vector_store
 
 index = VectorStoreIndex.from_vector_store(vector_store)
-memory = ChatMemoryBuffer.from_defaults(token_limit=4096)
+memory = ChatMemoryBuffer.from_defaults(token_limit=2048)
 chat_engine = index.as_chat_engine(
     chat_mode="condense_question",  # rewrites follow-ups like "dosage?" into full questions
     memory=memory,
