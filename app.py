@@ -2,7 +2,6 @@ import os
 import secrets
 
 from dotenv import load_dotenv
-from collections import defaultdict
 from flask import Flask, render_template, request, jsonify
 from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.core import VectorStoreIndex
@@ -96,45 +95,3 @@ def reset_conversation():
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# index = VectorStoreIndex.from_vector_store(vector_store)
-# memory = ChatMemoryBuffer.from_defaults(token_limit=2048)
-# chat_engine = index.as_chat_engine(
-#     chat_mode="condense_question",  
-#     memory=memory,
-#     text_qa_template=text_qa_template,
-#     similarity_top_k=5,
-#     response_mode="compact",
-#     condense_question_promp=condense_prompt,
-# )

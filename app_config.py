@@ -5,7 +5,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from llama_index.core import Settings, StorageContext
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-# from llama_index.llms.google_genai import GoogleGenAI
+from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.llms.groq import Groq
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone, ServerlessSpec
@@ -19,8 +19,7 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 EMBED_MODEL_NAME = "abhinand/MedEmbed-base-v0.1"
 EMBEDDING_DIM = 768
-GEMINI_MODEL_NAME = "models/gemini-2.5-flash"
-GROQ_MODEL_NAME =  "llama-3.1-8b-instant" #"qwen/qwen3-32b" #"llama-3.3-70b-versatile"
+LLM_MODEL_NAME =  "llama-3.1-8b-instant" #"qwen/qwen3-32b" #"llama-3.3-70b-versatile" #"models/gemini-2.5-flash"
 
 PINECONE_INDEX_NAME = "medicine-chatbot-llamaindex-medembed"
 PINECONE_CLOUD = "aws"
@@ -48,18 +47,18 @@ def init_settings_and_storage():
     )
 
     # LLM
-
-    # Settings.llm = GoogleGenAI(
-    #     model=GEMINI_MODEL_NAME,
-    #     api_key=google_api_key,
-    #     temperature=0.5,
-    # )
-
-    Settings.llm = Groq(
-        model=GROQ_MODEL_NAME,
-        api_key=groq_api_key,
-        temperature=0.5,
-    )
+    if(LLM_MODEL_NAME == "models/gemini-2.5-flash" or LLM_MODEL_NAME == "models/gemini-2.5-flash-lite"):
+        Settings.llm = GoogleGenAI(
+            model=LLM_MODEL_NAME,
+            api_key=google_api_key,
+            temperature=0.5,
+        )
+    else:
+        Settings.llm = Groq(
+            model=LLM_MODEL_NAME,
+            api_key=groq_api_key,
+            temperature=0.5,
+        )
 
 
     # Pinecone setup
