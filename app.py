@@ -2,6 +2,7 @@ import os
 import secrets
 
 from dotenv import load_dotenv
+from collections import defaultdict
 from flask import Flask, render_template, request, jsonify
 from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.core import VectorStoreIndex
@@ -21,17 +22,27 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY") or secrets.token_hex(32)
 
 storage_context = init_settings_and_storage()
 vector_store = storage_context.vector_store
-
 index = VectorStoreIndex.from_vector_store(vector_store)
-memory = ChatMemoryBuffer.from_defaults(token_limit=2048)
-chat_engine = index.as_chat_engine(
-    chat_mode="condense_question",  
-    memory=memory,
-    text_qa_template=text_qa_template,
-    similarity_top_k=5,
-    response_mode="compact",
-    condense_question_promp=condense_prompt,
-)
+chat_memories = {}
+chat_engines = {}
+
+def get_chat_engine(conv_id: str):
+    if not conv_id:
+        conv_id = "default"
+
+    if conv_id not in chat_memories:
+        chat_memories[conv_id] = ChatMemoryBuffer.from_defaults(token_limit=2048)
+        chat_engines[conv_id] = index.as_chat_engine(
+            chat_mode="condense_question",
+            memory=chat_memories[conv_id],
+            text_qa_template=text_qa_template,
+            similarity_top_k=5,
+            response_mode="compact",
+            condense_question_promp=condense_prompt,
+        )
+    return chat_engines[conv_id]
+
+
 
 @app.route("/")
 def index_route():
@@ -41,10 +52,12 @@ def index_route():
 @app.route("/get", methods=["POST"])
 def chat_route():
     user_msg = (request.form.get("msg") or "").strip()
+    conv_id = (request.form.get("conversation_id") or "").strip()
     if not user_msg:
         return jsonify({"response": "Please enter a question."})
 
     try:
+        chat_engine = get_chat_engine(conv_id)
         response_obj = chat_engine.chat(user_msg)
         answer = (str(response_obj) if response_obj is not None else "").strip()
         if not answer:
@@ -72,5 +85,56 @@ def chat_route():
     return jsonify({"response": answer, "sources": sources})
 
 
+@app.route("/reset", methods=["POST"])
+def reset_conversation():
+    conv_id = (request.form.get("conversation_id") or "").strip()
+    if conv_id in chat_memories:
+        chat_memories.pop(conv_id, None)
+        chat_engines.pop(conv_id, None)
+    return jsonify({"status": "ok"})
+
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# index = VectorStoreIndex.from_vector_store(vector_store)
+# memory = ChatMemoryBuffer.from_defaults(token_limit=2048)
+# chat_engine = index.as_chat_engine(
+#     chat_mode="condense_question",  
+#     memory=memory,
+#     text_qa_template=text_qa_template,
+#     similarity_top_k=5,
+#     response_mode="compact",
+#     condense_question_promp=condense_prompt,
+# )

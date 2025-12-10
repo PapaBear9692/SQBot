@@ -343,6 +343,7 @@ async function handleSubmit(event) {
     try {
         const formData = new FormData();
         formData.append("msg", text);
+        formData.append("conversation_id", currentConversationId || "");
 
         const response = await fetch("/get", {
             method: "POST",
@@ -395,7 +396,17 @@ function handleHistoryClick(event) {
         if (!confirmed) return;
 
         conversations = conversations.filter((c) => c.id !== id);
-
+        
+        // Send reset request to server to delete the chat history from memory
+        const resetData = new FormData();
+        resetData.append("conversation_id", id);
+        fetch("/reset", {
+            method: "POST",
+            body: resetData
+        }).catch(() => {
+            // ignore network errors here, UI is already updated
+        });
+        
         if (!conversations.length) {
             currentConversationId = null;
             createConversation();
