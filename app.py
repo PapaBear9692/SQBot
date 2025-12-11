@@ -30,7 +30,7 @@ def get_chat_engine(conv_id: str):
         conv_id = "default"
 
     if conv_id not in chat_memories:
-        chat_memories[conv_id] = ChatMemoryBuffer.from_defaults(token_limit=2048)
+        chat_memories[conv_id] = ChatMemoryBuffer.from_defaults(token_limit=1024)
         chat_engines[conv_id] = index.as_chat_engine(
             chat_mode="condense_question",
             memory=chat_memories[conv_id],
@@ -62,19 +62,19 @@ def chat_route():
         if not answer:
             answer = "I could not generate a response."
 
-        sources = []
-        for sn in getattr(response_obj, "source_nodes", []) or []:
-            node = sn.node
-            meta = getattr(node, "metadata", {}) or {}
-            sources.append(
-                {
-                    "score": float(getattr(sn, "score", 0.0) or 0.0),
-                    "product_name": meta.get("product_name"),
-                    "usage": meta.get("usage"),
-                    "file_name": meta.get("file_name"),
-                    "normalized_name": meta.get("normalized_name"),
-                }
-            )
+        # sources = []
+        # for sn in getattr(response_obj, "source_nodes", []) or []:
+        #     node = sn.node
+        #     meta = getattr(node, "metadata", {}) or {}
+        #     sources.append(
+        #         {
+        #             "score": float(getattr(sn, "score", 0.0) or 0.0),
+        #             "product_name": meta.get("product_name"),
+        #             "usage": meta.get("usage"),
+        #             "file_name": meta.get("file_name"),
+        #             "normalized_name": meta.get("normalized_name"),
+        #         }
+        #     )
 
     except Exception as e:
         print(f"Error in /get handler: {e!r}")
