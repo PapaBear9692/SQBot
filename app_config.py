@@ -53,7 +53,7 @@ def init_settings_and_storage():
         Settings.llm = GoogleGenAI(
             model=LLM_MODEL_NAME,
             api_key=google_api_key,
-            temperature=0.7,
+            temperature=0.5,
         )
     else:
         Settings.llm = Groq(
