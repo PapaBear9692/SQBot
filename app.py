@@ -35,7 +35,7 @@ def get_chat_engine(conv_id: str):
             chat_mode="condense_question",
             memory=chat_memories[conv_id],
             text_qa_template=text_qa_template,
-            similarity_top_k=5,
+            similarity_top_k=7,
             response_mode="compact",
             condense_question_promp=condense_prompt,
         )
@@ -62,7 +62,7 @@ def chat_route():
         if not answer:
             answer = "I could not generate a response."
 
-        # sources = []
+        sources = []
         # for sn in getattr(response_obj, "source_nodes", []) or []:
         #     node = sn.node
         #     meta = getattr(node, "metadata", {}) or {}
