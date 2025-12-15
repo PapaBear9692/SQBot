@@ -32,7 +32,7 @@ def get_chat_engine(conv_id: str):
     if conv_id not in chat_memories:
         chat_memories[conv_id] = ChatMemoryBuffer.from_defaults(token_limit=1024)
         chat_engines[conv_id] = index.as_chat_engine(
-            chat_mode="condense_question",
+            chat_mode="condense_question", # type: ignore
             memory=chat_memories[conv_id],
             text_qa_template=text_qa_template,
             similarity_top_k=7,
@@ -62,7 +62,7 @@ def chat_route():
         if not answer:
             answer = "I could not generate a response."
 
-        sources = []
+        #sources = []
         # for sn in getattr(response_obj, "source_nodes", []) or []:
         #     node = sn.node
         #     meta = getattr(node, "metadata", {}) or {}
@@ -79,9 +79,9 @@ def chat_route():
     except Exception as e:
         print(f"Error in /get handler: {e!r}")
         answer = "An error occurred while generating a response."
-        sources = []
+        #sources = []
 
-    return jsonify({"response": answer, "sources": sources})
+    return jsonify({"response": answer, "conversation_id": conv_id})
 
 
 @app.route("/reset", methods=["POST"])

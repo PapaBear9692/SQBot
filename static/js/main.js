@@ -18,6 +18,15 @@ const LOCAL_STORAGE_KEY = "medicine_chat_conversations_v1";
 let conversations = [];
 let currentConversationId = null;
 
+// ✅ FIX: track in-flight requests per conversation (prevents input staying disabled)
+const pendingByConversation = Object.create(null);
+function updateInputDisabledState() {
+    const pending = pendingByConversation[currentConversationId] || 0;
+    const shouldDisable = pending > 0;
+    if (sendButton) sendButton.disabled = shouldDisable;
+    if (messageInput) messageInput.disabled = shouldDisable;
+}
+
 // ===== UTILITIES =====
 function saveConversations() {
     try {
@@ -31,6 +40,7 @@ function loadConversations() {
     try {
         const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (!raw) return [];
+
         const parsed = JSON.parse(raw);
 
         // Ensure timestamps exist on old data
@@ -51,6 +61,7 @@ function loadConversations() {
 function createConversation(title = "New chat") {
     const id = Date.now().toString();
     const now = Date.now();
+
     const convo = {
         id,
         title,
@@ -58,6 +69,7 @@ function createConversation(title = "New chat") {
         createdAt: now,
         updatedAt: now
     };
+
     conversations.unshift(convo); // newest at top
 
     // Optional: limit number of saved conversations
@@ -69,10 +81,28 @@ function createConversation(title = "New chat") {
     saveConversations();
     renderSidebar();
     renderConversation();
+
+    // ✅ FIX: update input state for the newly selected chat
+    updateInputDisabledState();
 }
 
 function getCurrentConversation() {
     return conversations.find((c) => c.id === currentConversationId) || null;
+}
+
+// Helper (NEW): safely get a conversation by ID
+function getConversationById(conversationId) {
+    return conversations.find((c) => c.id === conversationId) || null;
+}
+
+// Helper (NEW): add message to a specific conversation (prevents “wrong chat” bug)
+function addMessageToConversationById(conversationId, role, text) {
+    const convo = getConversationById(conversationId);
+    if (!convo) return;
+
+    convo.messages.push({ role, content: text });
+    convo.updatedAt = Date.now();
+    saveConversations();
 }
 
 // Short title based on first user question
@@ -111,7 +141,6 @@ function formatTimestamp(ts) {
 }
 
 // ===== RENDERING =====
-
 function clearMessages() {
     if (!chatMessages) return;
     chatMessages.innerHTML = "";
@@ -214,6 +243,7 @@ function addMessageToUI(role, text) {
 function addMessageToConversation(role, text) {
     const convo = getCurrentConversation();
     if (!convo) return;
+
     convo.messages.push({ role, content: text });
     convo.updatedAt = Date.now();
     saveConversations();
@@ -285,7 +315,6 @@ function renderSidebar() {
 }
 
 // ===== EVENT HANDLERS =====
-
 async function handleSubmit(event) {
     event.preventDefault();
     if (!messageInput || !sendButton) return;
@@ -298,17 +327,23 @@ async function handleSubmit(event) {
         createConversation();
     }
 
-    // Add user message
+    // IMPORTANT: pin the conversation ID for this request
+    // so responses can't land in a different chat if user switches
+    const sendConversationId = currentConversationId;
+
+    // ✅ FIX: mark this conversation as pending + update input state for current chat
+    pendingByConversation[sendConversationId] = (pendingByConversation[sendConversationId] || 0) + 1;
+    updateInputDisabledState();
+
+    // Add user message (UI + correct conversation)
     addMessageToUI("user", text);
-    addMessageToConversation("user", text);
+    addMessageToConversationById(sendConversationId, "user", text);
     updateConversationTitleIfNeeded(text);
 
     messageInput.value = "";
     messageInput.focus();
 
-    // Disable input while waiting
-    sendButton.disabled = true;
-    messageInput.disabled = true;
+    // (OLD) Disable input while waiting ... removed, handled by pendingByConversation
 
     // Typing indicator
     const typingDiv = document.createElement("div");
@@ -343,7 +378,7 @@ async function handleSubmit(event) {
     try {
         const formData = new FormData();
         formData.append("msg", text);
-        formData.append("conversation_id", currentConversationId || "");
+        formData.append("conversation_id", sendConversationId || "");
 
         const response = await fetch("/get", {
             method: "POST",
@@ -356,22 +391,54 @@ async function handleSubmit(event) {
 
         const data = await response.json();
 
-        typingDiv.remove();
+        // Server may echo conversation_id; use it if present, otherwise pinned one
+        const targetConversationId = data.conversation_id || sendConversationId;
 
         const answer =
             data.response || data.answer || "Sorry, I couldn't generate a response.";
-        addMessageToUI("bot", answer);
-        addMessageToConversation("bot", answer);
+
+        // Always store reply in the correct conversation
+        addMessageToConversationById(targetConversationId, "bot", answer);
+
+        // Only render in UI if user is still viewing that conversation
+        if (currentConversationId === targetConversationId) {
+            if (typingDiv && typingDiv.isConnected) typingDiv.remove();
+            addMessageToUI("bot", answer);
+        } else {
+            // user switched chats; don't show it in the current UI
+            if (typingDiv && typingDiv.isConnected) typingDiv.remove();
+            renderSidebar();
+        }
     } catch (error) {
         console.error("Error:", error);
-        typingDiv.remove();
+
         const errorMsg = "Sorry, there was an error contacting the server.";
-        addMessageToUI("bot", errorMsg);
-        addMessageToConversation("bot", errorMsg);
+
+        // Store error in the correct conversation
+        addMessageToConversationById(sendConversationId, "bot", errorMsg);
+
+        // Only render in UI if user is still viewing that conversation
+        if (currentConversationId === sendConversationId) {
+            if (typingDiv && typingDiv.isConnected) typingDiv.remove();
+            addMessageToUI("bot", errorMsg);
+        } else {
+            if (typingDiv && typingDiv.isConnected) typingDiv.remove();
+            renderSidebar();
+        }
     } finally {
-        sendButton.disabled = false;
-        messageInput.disabled = false;
-        messageInput.focus();
+        // ✅ FIX: clear pending flag for this conversation
+        pendingByConversation[sendConversationId] = (pendingByConversation[sendConversationId] || 1) - 1;
+        if (pendingByConversation[sendConversationId] <= 0) {
+            delete pendingByConversation[sendConversationId];
+        }
+
+        // ✅ FIX: set disabled state based on currently selected chat
+        updateInputDisabledState();
+
+        // Keep your existing focus behavior (only focus if still on same chat)
+        if (currentConversationId === sendConversationId) {
+            messageInput.focus();
+        }
     }
 }
 
@@ -381,6 +448,9 @@ function handleNewChat() {
         messageInput.value = "";
         messageInput.focus();
     }
+
+    // ✅ FIX: update input state for the newly selected chat
+    updateInputDisabledState();
 }
 
 function handleHistoryClick(event) {
@@ -396,7 +466,7 @@ function handleHistoryClick(event) {
         if (!confirmed) return;
 
         conversations = conversations.filter((c) => c.id !== id);
-        
+
         // Send reset request to server to delete the chat history from memory
         const resetData = new FormData();
         resetData.append("conversation_id", id);
@@ -406,7 +476,7 @@ function handleHistoryClick(event) {
         }).catch(() => {
             // ignore network errors here, UI is already updated
         });
-        
+
         if (!conversations.length) {
             currentConversationId = null;
             createConversation();
@@ -420,6 +490,9 @@ function handleHistoryClick(event) {
         saveConversations();
         renderSidebar();
         renderConversation();
+
+        // ✅ FIX: update disabled state after selection changes
+        updateInputDisabledState();
         return;
     }
 
@@ -432,6 +505,9 @@ function handleHistoryClick(event) {
     currentConversationId = id;
     renderSidebar();
     renderConversation();
+
+    // ✅ FIX: update input disabled state for the selected chat
+    updateInputDisabledState();
 }
 
 function handleSidebarToggle() {
@@ -466,6 +542,9 @@ function init() {
     if (sidebarToggle) {
         sidebarToggle.addEventListener("click", handleSidebarToggle);
     }
+
+    // ✅ FIX: initialize disabled state on page load
+    updateInputDisabledState();
 }
 
 document.addEventListener("DOMContentLoaded", init);
