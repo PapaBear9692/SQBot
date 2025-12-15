@@ -150,7 +150,10 @@ Rewrite the latest user message into ONE clear standalone query for retrieval.
 
 STRICT RULES:
 - Your MUST response in English only regardless of the input language.
-- If asked for product list / all product or similar, respond with "list of product", ignore history.
+- If asked for "product list", "all product", "available products", "give me the list" similar, MUST ignore history context. 
+  the ALWAYS respond with **"list of all product"** only. understand "List"=="Product list" unless 
+  specifically mentioned in user question. Otherwise:
+
 - If the latest message mentions a NEW symptom (e.g., gastric, acidity, fever, cough) 
   that was NOT the focus of the previous message, treat it as a NEW conversation.
 - In that case, DO NOT include any previous medicine names or history.
