@@ -380,7 +380,7 @@ async function handleSubmit(event) {
         formData.append("msg", text);
         formData.append("conversation_id", sendConversationId || "");
 
-        const response = await fetch("/get", {
+        const response = await fetch("get", {
             method: "POST",
             body: formData
         });
@@ -470,7 +470,7 @@ function handleHistoryClick(event) {
         // Send reset request to server to delete the chat history from memory
         const resetData = new FormData();
         resetData.append("conversation_id", id);
-        fetch("/reset", {
+        fetch("reset", {
             method: "POST",
             body: resetData
         }).catch(() => {
