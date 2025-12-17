@@ -15,7 +15,7 @@ load_dotenv()
 text_qa_template = PromptTemplate(PROMPT_TEMPLATE)
 condense_prompt = PromptTemplate(CONDENSE_PROMPT)
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path="/chat/static")
 app.secret_key = os.getenv("FLASK_SECRET_KEY") or secrets.token_hex(32)
 
 
