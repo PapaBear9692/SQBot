@@ -23,7 +23,8 @@ EMBEDDING_DIM = 768
 #"llama-3.1-8b-instant" #"qwen/qwen3-32b" #"llama-3.3-70b-versatile" #"models/gemini-2.5-flash" #"models/gemini-2.5-flash-lite"
 LLM_MODEL_NAME =  "models/gemini-2.5-flash"
 
-PINECONE_INDEX_NAME = "medicine-chatbot-llamaindex-medembed"
+# PINECONE_INDEX_NAME = "medicine-chatbot-llamaindex-medembed"
+PINECONE_INDEX_NAME = "llama-medembed-index"
 PINECONE_CLOUD = "aws"
 PINECONE_REGION = "us-east-1"
 PINECONE_NAMESPACE = None
