@@ -35,7 +35,7 @@ def get_chat_engine(conv_id: str):
             chat_mode="condense_question", # type: ignore
             memory=chat_memories[conv_id],
             text_qa_template=text_qa_template,
-            similarity_top_k=7,
+            similarity_top_k=10,
             response_mode="compact",
             condense_question_promp=condense_prompt,
         )
