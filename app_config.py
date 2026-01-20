@@ -24,7 +24,7 @@ EMBEDDING_DIM = 768
 LLM_MODEL_NAME =  "models/gemini-2.5-flash"
 
 # PINECONE_INDEX_NAME = "medicine-chatbot-llamaindex-medembed"
-PINECONE_INDEX_NAME = "llama-medembed-index"
+PINECONE_INDEX_NAME = "sqbot-data-index"
 PINECONE_CLOUD = "aws"
 PINECONE_REGION = "us-east-1"
 PINECONE_NAMESPACE = None
