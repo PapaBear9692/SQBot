@@ -177,7 +177,7 @@ def get_chat_engine(conv_id: str):
             similarity_top_k=10,
             response_mode="compact",
             # Keep your exact arg name/version behavior (typo included if it's working in your env)
-            condense_question_promp=condense_prompt,
+            condense_question_prompt=condense_prompt,
         )
     return chat_engines[conv_id]
 
