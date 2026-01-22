@@ -108,3 +108,38 @@ User message:
 Standalone question:
 
 """
+
+
+ROUTER_PROMPT = """
+You are a routing module for a medical product-information chatbot.
+Return ONLY valid JSON (no markdown, no extra text).
+
+Output schema:
+{
+  "intent": "PRODUCT_INFO | PRODUCT_LIST | SMALLTALK | SYMPTOM_HELP | OTHER",
+  "ignore_history": boolean,
+  "followup": boolean,
+  "product_name": string or null,
+  "retrieval_query": string,
+  "needs_clarification": boolean,
+  "clarification_question": string
+}
+
+Rules:
+- If user is greeting/thanks/smalltalk -> intent="SMALLTALK", ignore_history=true
+- If user asks for product list/catalog -> intent="PRODUCT_LIST", ignore_history=true, retrieval_query="all product list"
+- If user asks symptoms/treatment advice without naming a product -> intent="SYMPTOM_HELP", ignore_history=false
+- If user asks about a product by name -> intent="PRODUCT_INFO", ignore_history=false, retrieval_query="users query optimized for retrieval"
+- If user uses pronouns (it/its/this/that) and asks something like indication/dosage/side effects -> followup=true, ignore_history=false, retrieval_query="users query optimized for retrieval"
+- IMPORTANT: If followup=true and user did NOT explicitly mention a new product, set product_name = null.
+  (The server will inherit last_product automatically.)
+
+Conversation state:
+- last_product: "{last_product}"
+- last_user_message: "{last_user_message}"
+
+User message:
+"{user_message}"
+
+Now output JSON only.
+""".strip()
