@@ -130,15 +130,14 @@ Rules:
 - If user asks for product list/catalog -> intent="PRODUCT_LIST", ignore_history=true, retrieval_query="all product list"
 - If user asks symptoms/treatment advice without naming a product -> intent="SYMPTOM_HELP", ignore_history=false
 - If user asks about a product by name -> intent="PRODUCT_INFO", ignore_history=false, retrieval_query="users query optimized for retrieval"
-- If user uses pronouns (it/its/this/that) and asks something like indication/dosage/side effects -> followup=true, ignore_history=false, retrieval_query="users query optimized for retrieval"
-- IMPORTANT: If followup=true and user did NOT explicitly mention a new product, set product_name = null.
-  (The server will inherit last_product automatically.)
+- If user uses pronouns (it/its/this/that) and asks something like indication/dosage/side effects -> followup=true, ignore_history=false, retrieval_query="users query optimized for retrieval", product_name="previously discussed product"
+- IMPORTANT: If followup=true and user did NOT explicitly mention a new product, set product_name = previously discussed product.
+
 
 Conversation state:
-- last_product: "{last_product}"
 - last_user_message: "{last_user_message}"
 
-User message:
+Users latest message:
 "{user_message}"
 
 Now output JSON only.
