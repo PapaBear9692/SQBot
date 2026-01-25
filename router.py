@@ -200,8 +200,8 @@ def retrieve_product_list_context(index: VectorStoreIndex) -> str:
     Prime-node style retrieval via deterministic queries (no metadata assumptions).
     Adjust strings if needed to uniquely hit your product-list nodes.
     """
-    q_pharma = "All Product List (Pharma) Square Pharmaceuticals PLC"
-    q_herbal = "All Product List (Herbal) Square Pharmaceuticals PLC"
+    q_pharma = "All Product List (Pharma) Square Pharmaceuticals PLC Prime_Node_Pharma"
+    q_herbal = "All Product List (Herbal) Square Pharmaceuticals PLC Prime_Node_Herbal"
 
     pharma_ctx = retrieve_context(index, q_pharma, top_k=1)
     herbal_ctx = retrieve_context(index, q_herbal, top_k=1)

@@ -126,7 +126,7 @@ Output schema:
 }
 
 Rules:
-- If user is greeting/thanks/smalltalk -> intent="SMALLTALK", ignore_history=true
+- If user is greeting/thanks/smalltalk -> intent="SMALLTALK", ignore_history=true, retrieval_query="all product list"
 - If user asks for product list/catalog -> intent="PRODUCT_LIST", ignore_history=true, retrieval_query="all product list"
 - If user asks symptoms/treatment advice without naming a product -> intent="SYMPTOM_HELP", ignore_history=false
 - If user asks about a product by name -> intent="PRODUCT_INFO", ignore_history=false, retrieval_query="users query optimized for retrieval"
