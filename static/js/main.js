@@ -14,6 +14,138 @@ const BOT_AVATAR = containerEl?.dataset.botAvatar || "";
 const USER_AVATAR = containerEl?.dataset.userAvatar || "";
 const LOCAL_STORAGE_KEY = "medicine_chat_conversations_v1";
 
+// =====================
+// Streaming speed controls (global)
+// Tweak from DevTools, e.g. STREAM_WPS = 14
+// =====================
+window.STREAM_ENABLED = true;        // master switch
+window.STREAM_MODE = "word";         // "word" | "char"
+window.STREAM_WPS = 50;              // words per second (word mode)
+window.STREAM_CPS = 50;              // chars per second (char mode)
+window.STREAM_PUNCT_PAUSE_MS = 120;  // extra pause after . ! ? …
+window.STREAM_NEWLINE_PAUSE_MS = 80; // extra pause after newline
+window.STREAM_MIN_DELAY_MS = 10;     // floor
+window.STREAM_MD_RENDER_INTERVAL_MS = 60; // re-render markdown every N ms during streaming
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isPunctEnding(token) {
+    return /[.!?…]$/.test(token);
+}
+
+/**
+ * Streams fullText into element el progressively,
+ * preserving Markdown formatting DURING streaming.
+ *
+ * NOTE:
+ * - Mid-stream markdown may look imperfect for unfinished fences/lists.
+ * - Uses throttling to avoid expensive parse on every token.
+ */
+async function streamIntoElement(el, fullText) {
+    if (!el) return;
+
+    // allow cancellation (e.g., switching chats / re-render)
+    if (el.__streamCancel) el.__streamCancel();
+    let cancelled = false;
+    el.__streamCancel = () => { cancelled = true; };
+
+    const text = fullText || "";
+
+    // If streaming disabled, render instantly (markdown if available)
+    if (!window.STREAM_ENABLED) {
+        if (typeof marked !== "undefined") el.innerHTML = marked.parse(text);
+        else el.textContent = text;
+        return;
+    }
+
+    const useMarkdown = (typeof marked !== "undefined");
+    const mode = window.STREAM_MODE || "word";
+
+    // buffer we append into
+    let buffer = "";
+
+    // Throttled renderer so we don't parse markdown every token (too slow)
+    const renderEvery = Math.max(10, Number(window.STREAM_MD_RENDER_INTERVAL_MS) || 60);
+    let lastRenderAt = 0;
+
+    const renderNow = () => {
+        if (cancelled) return;
+
+        // Stick-to-bottom only if user is already near bottom
+        const shouldStick =
+            chatMessages
+                ? (chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - 40)
+                : true;
+
+        if (useMarkdown) {
+            el.innerHTML = marked.parse(buffer);
+        } else {
+            el.textContent = buffer;
+        }
+
+        if (shouldStick) scrollToBottom();
+    };
+
+    const maybeRender = () => {
+        const now = Date.now();
+        if (now - lastRenderAt >= renderEvery) {
+            lastRenderAt = now;
+            renderNow();
+        }
+    };
+
+    // Clear initially
+    buffer = "";
+    renderNow();
+
+    if (mode === "char") {
+        const cps = Number(window.STREAM_CPS) || 35;
+        const baseDelay = Math.max(window.STREAM_MIN_DELAY_MS, Math.round(1000 / cps));
+
+        for (let i = 0; i < text.length; i++) {
+            if (cancelled) return;
+
+            const ch = text[i];
+            buffer += ch;
+
+            // re-render markdown while streaming
+            maybeRender();
+
+            let extra = 0;
+            if (/[.!?…]/.test(ch)) extra += Number(window.STREAM_PUNCT_PAUSE_MS) || 0;
+            if (ch === "\n") extra += Number(window.STREAM_NEWLINE_PAUSE_MS) || 0;
+
+            await sleep(baseDelay + extra);
+        }
+    } else {
+        // word mode (keeps whitespace tokens)
+        const wps = Number(window.STREAM_WPS) || 10;
+        const baseDelay = Math.max(window.STREAM_MIN_DELAY_MS, Math.round(1000 / wps));
+        const tokens = text.split(/(\s+)/);
+
+        for (const t of tokens) {
+            if (cancelled) return;
+
+            buffer += t;
+
+            // re-render markdown while streaming
+            maybeRender();
+
+            let extra = 0;
+            const trimmed = t.trim();
+            if (trimmed && isPunctEnding(trimmed)) extra += Number(window.STREAM_PUNCT_PAUSE_MS) || 0;
+            if (t.includes("\n")) extra += Number(window.STREAM_NEWLINE_PAUSE_MS) || 0;
+
+            await sleep(baseDelay + extra);
+        }
+    }
+
+    // Final render (ensures complete formatting)
+    renderNow();
+}
+
 // ===== STATE =====
 let conversations = [];
 let currentConversationId = null;
@@ -233,6 +365,39 @@ function createMessageElement(role, text) {
     return wrapper;
 }
 
+// Create an EMPTY bot message bubble and return its content element (for streaming)
+function createBotMessageElementEmpty() {
+    const wrapper = document.createElement("div");
+    wrapper.className = "message bot-message";
+
+    const avatar = document.createElement("div");
+    avatar.className = "message-avatar bot-avatar";
+
+    if (BOT_AVATAR) {
+        const img = document.createElement("img");
+        img.src = BOT_AVATAR;
+        img.alt = "Bot";
+        img.className = "bot-logo-avatar";
+        avatar.appendChild(img);
+    } else {
+        avatar.textContent = "AI";
+    }
+
+    const content = document.createElement("div");
+    content.className = "message-content";
+    // starts empty; we stream into it
+
+    wrapper.appendChild(avatar);
+    wrapper.appendChild(content);
+
+    if (chatMessages) {
+        chatMessages.appendChild(wrapper);
+        scrollToBottom();
+    }
+
+    return { wrapper, content };
+}
+
 function addMessageToUI(role, text) {
     if (!chatMessages) return;
     const el = createMessageElement(role, text);
@@ -343,8 +508,6 @@ async function handleSubmit(event) {
     messageInput.value = "";
     messageInput.focus();
 
-    // (OLD) Disable input while waiting ... removed, handled by pendingByConversation
-
     // Typing indicator
     const typingDiv = document.createElement("div");
     typingDiv.className = "message bot-message typing-indicator";
@@ -403,7 +566,10 @@ async function handleSubmit(event) {
         // Only render in UI if user is still viewing that conversation
         if (currentConversationId === targetConversationId) {
             if (typingDiv && typingDiv.isConnected) typingDiv.remove();
-            addMessageToUI("bot", answer);
+
+            // ✅ ChatGPT-like streaming render (markdown preserved during streaming)
+            const { content } = createBotMessageElementEmpty();
+            await streamIntoElement(content, answer);
         } else {
             // user switched chats; don't show it in the current UI
             if (typingDiv && typingDiv.isConnected) typingDiv.remove();
@@ -420,7 +586,10 @@ async function handleSubmit(event) {
         // Only render in UI if user is still viewing that conversation
         if (currentConversationId === sendConversationId) {
             if (typingDiv && typingDiv.isConnected) typingDiv.remove();
-            addMessageToUI("bot", errorMsg);
+
+            // Stream error too (optional)
+            const { content } = createBotMessageElementEmpty();
+            await streamIntoElement(content, errorMsg);
         } else {
             if (typingDiv && typingDiv.isConnected) typingDiv.remove();
             renderSidebar();
