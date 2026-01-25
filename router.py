@@ -1,7 +1,7 @@
 # router.py
 import os
 import json
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, Generator, Optional
 from collections import defaultdict, deque
 from dotenv import load_dotenv
 
@@ -169,7 +169,7 @@ def _get_or_create_chat_engine(index: VectorStoreIndex, conv_id: str) -> Any:
     if conv_id not in chat_memories:
         chat_memories[conv_id] = ChatMemoryBuffer.from_defaults(token_limit=CHAT_MEMORY_TOKENS)
         chat_engines[conv_id] = index.as_chat_engine(
-            chat_mode="context", # type: ignore
+            chat_mode="context",  # type: ignore
             memory=chat_memories[conv_id],
             similarity_top_k=RETRIEVAL_TOP_K,
         )
@@ -202,7 +202,6 @@ def retrieve_product_list_context(index: VectorStoreIndex) -> str:
     """
     q_pharma = "All Product List Pharma, Herbal, Prime_Node_Pharma, Prime_Node_Herbal"
 
-
     pharma_ctx = retrieve_context(index, q_pharma, top_k=3)
 
     print(f"Product list contexts retrieved: pharma_len={len(pharma_ctx)}")
@@ -220,7 +219,7 @@ def generate_answer_from_context(user_msg: str, context_str: str) -> str:
 
 def generate_answer_chat(index: VectorStoreIndex, user_msg: str, expanded_query: str, conv_id: str) -> str:
     """
-    Chat-engine generation (retrieval + memory)
+    Chat-engine generation (retrieval + memory) - non-stream
     """
     engine = _get_or_create_chat_engine(index, conv_id)
     message = f"""User question:
@@ -234,23 +233,40 @@ Retrieval query:
     return (str(resp) or "").strip()
 
 
+# ---------------------------------------------------------------------
+# STREAMING: Phase 2 streaming generator (tokens)
+# ---------------------------------------------------------------------
+def generate_answer_chat_stream(
+    index: VectorStoreIndex, user_msg: str, expanded_query: str, conv_id: str
+) -> Generator[str, None, str]:
+    """
+    Chat-engine generation (retrieval + memory) - streaming.
+    Yields tokens, and returns the full text at the end (StopIteration.value).
+    """
+    engine = _get_or_create_chat_engine(index, conv_id)
+    message = f"""User question:
+{user_msg}
+
+Retrieval query:
+{expanded_query}
+"""
+    resp = engine.stream_chat(message)
+
+    chunks = []
+    for tok in resp.response_gen:
+        if tok:
+            chunks.append(tok)
+            yield tok
+
+    return "".join(chunks).strip()
+
+
 # =====================================================================
 # Orchestration: phase1 -> program flow -> phase2
 # =====================================================================
 def handle_chat_message(index: VectorStoreIndex, user_msg: str, conv_id: str) -> Tuple[str, str]:
     """
-    Flow:
-    Phase 1 (router):
-      - route_message() -> intent, ignore_history, needs_clarification, product_name, retrieval_query
-      - if ignore_history -> reset_conversation()
-      - if needs_clarification -> ask user
-
-    Phase 2 (llama-index):
-      - PRODUCT_LIST -> retrieve_product_list_context() + generate_answer_from_context()
-      - otherwise -> generate_answer_chat() using expanded retrieval query
-
-    Also:
-      - store user+assistant turns into chat_history for future router decisions
+    (UNCHANGED) Non-streaming base handler.
     """
     user_msg = (user_msg or "").strip()
     conv_id = (conv_id or "").strip() or "default"
@@ -299,7 +315,7 @@ def handle_chat_message(index: VectorStoreIndex, user_msg: str, conv_id: str) ->
             answer = "I couldn't find the product list in my data right now."
         else:
             answer = generate_answer_from_context(user_msg, ctx) or "I could not generate a response."
-    #intent == "PRODUCT_INFO" or others
+    # intent == "PRODUCT_INFO" or others
     else:
         answer = generate_answer_chat(index, user_msg, expanded_query, conv_id) or "I could not generate a response."
 
@@ -308,3 +324,109 @@ def handle_chat_message(index: VectorStoreIndex, user_msg: str, conv_id: str) ->
     chat_history[conv_id].append({"role": "assistant", "content": answer})
 
     return (answer, conv_id)
+
+
+# ---------------------------------------------------------------------
+# SSE handler (NEW): yields SSE-formatted events for /stream
+# ---------------------------------------------------------------------
+def handle_chat_message_sse(
+    index: VectorStoreIndex, user_msg: str, conv_id: str
+) -> Generator[str, None, None]:
+    """
+    SSE streaming handler.
+
+    Events:
+      - meta:   {"conversation_id": "..."}
+      - message: streamed tokens (multiple events)
+      - done:   {}
+      - error:  "..."
+    """
+    user_msg = (user_msg or "").strip()
+    conv_id = (conv_id or "").strip() or "default"
+
+    # meta
+    yield "event: meta\n"
+    yield f"data: {json.dumps({'conversation_id': conv_id})}\n\n"
+
+    if not user_msg:
+        yield "event: error\n"
+        yield "data: Please enter a question.\n\n"
+        yield "event: done\n"
+        yield "data: {}\n\n"
+        return
+
+    # -------------------------
+    # Phase 1: Router (NON-stream)
+    # -------------------------
+    route = route_message(user_msg, conv_id)
+    last_user_msgs[conv_id] = user_msg
+
+    if route.get("ignore_history") is True:
+        reset_conversation(conv_id)
+
+    if route.get("needs_clarification"):
+        q = route.get("clarification_question") or "Could you clarify your question?"
+        chat_history[conv_id].append({"role": "user", "content": user_msg})
+
+        yield "event: message\n"
+        yield f"data: {q}\n\n"
+        yield "event: done\n"
+        yield "data: {}\n\n"
+        return
+
+    intent = route.get("intent", "OTHER")
+    expanded_query = (route.get("retrieval_query") or "").strip()
+    product_name = route.get("product_name")
+
+    if intent == "PRODUCT_INFO":
+        if not expanded_query:
+            expanded_query = product_name or user_msg
+        elif product_name and product_name.lower() not in expanded_query.lower():
+            expanded_query = f"{product_name} {expanded_query}".strip()
+
+    if not expanded_query:
+        expanded_query = user_msg
+
+    # -------------------------
+    # Phase 2: LlamaIndex (STREAM for normal answers)
+    # -------------------------
+    # Keep your existing behavior for PRODUCT_LIST/SMALLTALK: non-stream one-shot
+    if intent == "PRODUCT_LIST" or intent == "SMALLTALK":
+        ctx = retrieve_product_list_context(index)
+        if not ctx:
+            answer = "I couldn't find the product list in my data right now."
+        else:
+            answer = generate_answer_from_context(user_msg, ctx) or "I could not generate a response."
+
+        chat_history[conv_id].append({"role": "user", "content": user_msg})
+        chat_history[conv_id].append({"role": "assistant", "content": answer})
+
+        yield "event: message\n"
+        yield f"data: {answer}\n\n"
+        yield "event: done\n"
+        yield "data: {}\n\n"
+        return
+
+    # Stream tokens for PRODUCT_INFO / OTHER
+    buf = []
+    try:
+        yield "event: message\n"
+        for tok in generate_answer_chat_stream(index, user_msg, expanded_query, conv_id):
+            buf.append(tok)
+            yield f"data: {tok}\n\n"
+    except Exception as e:
+        print(f"[ERROR] streaming failed: {e!r}")
+        yield "event: error\n"
+        yield "data: An error occurred while streaming the response.\n\n"
+        yield "event: done\n"
+        yield "data: {}\n\n"
+        return
+
+    full_answer = "".join(buf).strip() or "I could not generate a response."
+
+    # Store turns AFTER stream completes (important)
+    chat_history[conv_id].append({"role": "user", "content": user_msg})
+    chat_history[conv_id].append({"role": "assistant", "content": full_answer})
+
+    yield "event: done\n"
+    yield "data: {}\n\n"
