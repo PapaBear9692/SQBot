@@ -16,7 +16,7 @@ from prompt import PROMPT_TEMPLATE, ROUTER_PROMPT
 # =====================================================================
 # Shared in-memory state (per conv_id)
 # =====================================================================
-CHAT_HISTORY_MAX_TURNS = int(os.getenv("CHAT_HISTORY_MAX_TURNS", "10"))
+CHAT_HISTORY_MAX_TURNS = int(os.getenv("CHAT_HISTORY_MAX_TURNS", "5"))
 chat_history = defaultdict(lambda: deque(maxlen=CHAT_HISTORY_MAX_TURNS))
 last_user_msgs: Dict[str, str] = {}
 
@@ -24,7 +24,7 @@ last_user_msgs: Dict[str, str] = {}
 chat_memories: Dict[str, ChatMemoryBuffer] = {}
 chat_engines: Dict[str, Any] = {}
 
-CHAT_MEMORY_TOKENS = int(os.getenv("CHAT_MEMORY_TOKENS", "1024"))
+CHAT_MEMORY_TOKENS = int(os.getenv("CHAT_MEMORY_TOKENS", "512"))
 RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "10"))
 
 
@@ -200,13 +200,13 @@ def retrieve_product_list_context(index: VectorStoreIndex) -> str:
     Prime-node style retrieval via deterministic queries (no metadata assumptions).
     Adjust strings if needed to uniquely hit your product-list nodes.
     """
-    q_pharma = "All Product List (Pharma) Square Pharmaceuticals PLC Prime_Node_Pharma"
-    q_herbal = "All Product List (Herbal) Square Pharmaceuticals PLC Prime_Node_Herbal"
+    q_pharma = "All Product List Pharma, Herbal, Prime_Node_Pharma, Prime_Node_Herbal"
 
-    pharma_ctx = retrieve_context(index, q_pharma, top_k=1)
-    herbal_ctx = retrieve_context(index, q_herbal, top_k=1)
-    print(f"Product list contexts retrieved: pharma_len={len(pharma_ctx)}, herbal_len={len(herbal_ctx)}")
-    return "\n\n".join([pharma_ctx, herbal_ctx]).strip()
+
+    pharma_ctx = retrieve_context(index, q_pharma, top_k=3)
+
+    print(f"Product list contexts retrieved: pharma_len={len(pharma_ctx)}")
+    return "\n\n" + pharma_ctx.strip()
 
 
 def generate_answer_from_context(user_msg: str, context_str: str) -> str:
@@ -293,12 +293,13 @@ def handle_chat_message(index: VectorStoreIndex, user_msg: str, conv_id: str) ->
     # -------------------------
     # Phase 2: LlamaIndex
     # -------------------------
-    if intent == "PRODUCT_LIST":
+    if intent == "PRODUCT_LIST" or intent == "SMALLTALK":
         ctx = retrieve_product_list_context(index)
         if not ctx:
             answer = "I couldn't find the product list in my data right now."
         else:
             answer = generate_answer_from_context(user_msg, ctx) or "I could not generate a response."
+    #intent == "PRODUCT_INFO" or others
     else:
         answer = generate_answer_chat(index, user_msg, expanded_query, conv_id) or "I could not generate a response."
 
