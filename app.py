@@ -45,6 +45,8 @@ def chat_route():
 
     return jsonify({"response": answer, "conversation_id": cid})
 
+
+
 @app.route("/reset", methods=["POST"])
 def reset_route():
     conv_id = (request.form.get("conversation_id") or "").strip() or "default"

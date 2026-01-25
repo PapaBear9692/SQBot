@@ -20,10 +20,10 @@ const LOCAL_STORAGE_KEY = "medicine_chat_conversations_v1";
 // =====================
 window.STREAM_ENABLED = true;        // master switch
 window.STREAM_MODE = "word";         // "word" | "char"
-window.STREAM_WPS = 50;              // words per second (word mode)
-window.STREAM_CPS = 50;              // chars per second (char mode)
+window.STREAM_WPS = 200;              // words per second (word mode)
+window.STREAM_CPS = 500;              // chars per second (char mode)
 window.STREAM_PUNCT_PAUSE_MS = 120;  // extra pause after . ! ? …
-window.STREAM_NEWLINE_PAUSE_MS = 80; // extra pause after newline
+window.STREAM_NEWLINE_PAUSE_MS = 50; // extra pause after newline
 window.STREAM_MIN_DELAY_MS = 10;     // floor
 window.STREAM_MD_RENDER_INTERVAL_MS = 60; // re-render markdown every N ms during streaming
 
@@ -73,7 +73,6 @@ async function streamIntoElement(el, fullText) {
     const renderNow = () => {
         if (cancelled) return;
 
-        // Stick-to-bottom only if user is already near bottom
         const shouldStick =
             chatMessages
                 ? (chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - 40)
@@ -100,6 +99,18 @@ async function streamIntoElement(el, fullText) {
     buffer = "";
     renderNow();
 
+    // ✅ NEW: hard cutoff (10s) -> dump the rest at once
+    const startedAt = Date.now();
+    const maxMs = 10_000;
+
+    const exceededTimeLimit = () => (Date.now() - startedAt) > maxMs;
+
+    const dumpRestAndFinish = (rest) => {
+        if (cancelled) return;
+        buffer += rest;
+        renderNow(); // final render with full markdown
+    };
+
     if (mode === "char") {
         const cps = Number(window.STREAM_CPS) || 35;
         const baseDelay = Math.max(window.STREAM_MIN_DELAY_MS, Math.round(1000 / cps));
@@ -107,10 +118,15 @@ async function streamIntoElement(el, fullText) {
         for (let i = 0; i < text.length; i++) {
             if (cancelled) return;
 
+            // ✅ NEW: if time limit hit, append remainder and exit
+            if (exceededTimeLimit()) {
+                dumpRestAndFinish(text.slice(i));
+                return;
+            }
+
             const ch = text[i];
             buffer += ch;
 
-            // re-render markdown while streaming
             maybeRender();
 
             let extra = 0;
@@ -120,17 +136,23 @@ async function streamIntoElement(el, fullText) {
             await sleep(baseDelay + extra);
         }
     } else {
-        // word mode (keeps whitespace tokens)
         const wps = Number(window.STREAM_WPS) || 10;
         const baseDelay = Math.max(window.STREAM_MIN_DELAY_MS, Math.round(1000 / wps));
         const tokens = text.split(/(\s+)/);
 
-        for (const t of tokens) {
+        for (let idx = 0; idx < tokens.length; idx++) {
             if (cancelled) return;
 
+            // ✅ NEW: if time limit hit, append remainder and exit
+            if (exceededTimeLimit()) {
+                await sleep(2); // yield
+                dumpRestAndFinish(tokens.slice(idx).join(""));
+                return;
+            }
+
+            const t = tokens[idx];
             buffer += t;
 
-            // re-render markdown while streaming
             maybeRender();
 
             let extra = 0;
@@ -145,6 +167,7 @@ async function streamIntoElement(el, fullText) {
     // Final render (ensures complete formatting)
     renderNow();
 }
+
 
 // ===== STATE =====
 let conversations = [];

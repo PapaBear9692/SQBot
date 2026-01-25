@@ -16,7 +16,7 @@ from prompt import PROMPT_TEMPLATE, ROUTER_PROMPT
 # =====================================================================
 # Shared in-memory state (per conv_id)
 # =====================================================================
-CHAT_HISTORY_MAX_TURNS = int(os.getenv("CHAT_HISTORY_MAX_TURNS", "5"))
+CHAT_HISTORY_MAX_TURNS = int(os.getenv("CHAT_HISTORY_MAX_TURNS", "3"))
 chat_history = defaultdict(lambda: deque(maxlen=CHAT_HISTORY_MAX_TURNS))
 last_user_msgs: Dict[str, str] = {}
 
@@ -24,7 +24,7 @@ last_user_msgs: Dict[str, str] = {}
 chat_memories: Dict[str, ChatMemoryBuffer] = {}
 chat_engines: Dict[str, Any] = {}
 
-CHAT_MEMORY_TOKENS = int(os.getenv("CHAT_MEMORY_TOKENS", "512"))
+CHAT_MEMORY_TOKENS = int(os.getenv("CHAT_MEMORY_TOKENS", "300"))
 RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "10"))
 
 
