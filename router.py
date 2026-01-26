@@ -1,7 +1,7 @@
 # router.py
 import os
 import json
-from typing import Any, Dict, Tuple, Generator, Optional
+from typing import Any, Dict, Tuple, Generator
 from collections import defaultdict, deque
 from dotenv import load_dotenv
 
@@ -9,7 +9,10 @@ from llama_index.core import Settings, VectorStoreIndex
 from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.core.prompts import PromptTemplate
 from llama_index.llms.google_genai import GoogleGenAI
+from llama_index.core.postprocessor import SentenceTransformerRerank
 
+
+from app_config import CACHE_DIR
 from prompt import PROMPT_TEMPLATE, ROUTER_PROMPT
 
 
@@ -26,6 +29,18 @@ chat_engines: Dict[str, Any] = {}
 
 CHAT_MEMORY_TOKENS = int(os.getenv("CHAT_MEMORY_TOKENS", "300"))
 RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "10"))
+# Rerank settings
+RERANK_ENABLED = os.getenv("RERANK_ENABLED", "true").lower() == "true"
+
+# Pull this many candidates from Pinecone first (should be > RERANK_TOP_N)
+RERANK_CANDIDATES = int(os.getenv("RERANK_CANDIDATES", str(max(RETRIEVAL_TOP_K, 30))))
+
+# Keep this many after rerank (this is your "final top_k" effectively)
+RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", str(RETRIEVAL_TOP_K)))
+
+# Good default cross-encoder reranker model
+RERANK_MODEL = os.getenv("RERANK_MODEL", "NeuML/biomedbert-base-reranker")
+
 
 
 # =====================================================================
@@ -162,18 +177,50 @@ def reset_conversation(conv_id: str) -> None:
 text_qa_template = PromptTemplate(PROMPT_TEMPLATE)
 
 
+# def _get_or_create_chat_engine(index: VectorStoreIndex, conv_id: str) -> Any:
+#     """
+#     LlamaIndex chat engine: retrieval + memory
+#     """
+#     if conv_id not in chat_memories:
+#         chat_memories[conv_id] = ChatMemoryBuffer.from_defaults(token_limit=CHAT_MEMORY_TOKENS)
+#         chat_engines[conv_id] = index.as_chat_engine(
+#             chat_mode="context",  # type: ignore
+#             memory=chat_memories[conv_id],
+#             similarity_top_k=RETRIEVAL_TOP_K,
+#         )
+#     return chat_engines[conv_id]
+
 def _get_or_create_chat_engine(index: VectorStoreIndex, conv_id: str) -> Any:
     """
-    LlamaIndex chat engine: retrieval + memory
+    LlamaIndex chat engine: retrieval + memory + (optional) rerank
     """
     if conv_id not in chat_memories:
         chat_memories[conv_id] = ChatMemoryBuffer.from_defaults(token_limit=CHAT_MEMORY_TOKENS)
+
+        node_postprocessors = []
+        similarity_top_k = RETRIEVAL_TOP_K
+
+        if RERANK_ENABLED:
+            # Ensure we fetch more candidates than we keep
+            candidates = max(RERANK_CANDIDATES, RERANK_TOP_N)
+            similarity_top_k = candidates
+
+            rerank = SentenceTransformerRerank(
+                model=RERANK_MODEL,
+                top_n=RERANK_TOP_N,
+            )
+            rerank.save(CACHE_DIR) # type: ignore
+            node_postprocessors = [rerank]
+
         chat_engines[conv_id] = index.as_chat_engine(
             chat_mode="context",  # type: ignore
             memory=chat_memories[conv_id],
-            similarity_top_k=RETRIEVAL_TOP_K,
+            similarity_top_k=similarity_top_k,          # Pinecone candidates
+            node_postprocessors=node_postprocessors,    # local reranker
         )
+
     return chat_engines[conv_id]
+
 
 
 def _nodes_to_context_str(nodes_with_scores) -> str:
