@@ -209,7 +209,6 @@ def _get_or_create_chat_engine(index: VectorStoreIndex, conv_id: str) -> Any:
                 model=RERANK_MODEL,
                 top_n=RERANK_TOP_N,
             )
-            rerank.save(CACHE_DIR) # type: ignore
             node_postprocessors = [rerank]
 
         chat_engines[conv_id] = index.as_chat_engine(
