@@ -153,7 +153,7 @@ def route_message(user_msg: str, conv_id: str) -> Dict[str, Any]:
     if data.get("intent") == "PRODUCT_INFO" and not data.get("product_name"):
         data["needs_clarification"] = True
         if not data.get("clarification_question"):
-            data["clarification_question"] = "Which medicine/product are you asking about?"
+            data["clarification_question"] = "Sorry, I did not get it. Which medicine/product are you asking about?"
 
     print("Router Model Response Generated.")
     return data
