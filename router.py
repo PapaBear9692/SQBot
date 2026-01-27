@@ -152,8 +152,14 @@ def route_message(user_msg: str, conv_id: str) -> Dict[str, Any]:
     # Safety rule: if PRODUCT_INFO but no product_name, force clarification
     if data.get("intent") == "PRODUCT_INFO" and not data.get("product_name"):
         data["needs_clarification"] = True
-        if not data.get("clarification_question"):
-            data["clarification_question"] = "Sorry, I did not get it. Which medicine/product are you asking about?"
+        if not data.get("clarification_question"): #rerun router to try get product_name
+            raw = (router_llm.complete(prompt).text or "").strip()
+            data = _extract_first_json_object(raw)
+            data = _normalize_router_output(data)
+            if data.get("intent") == "PRODUCT_INFO" and not data.get("product_name"):
+                data["needs_clarification"] = True
+                if not data.get("clarification_question"):
+                    data["clarification_question"] = "Sorry, I did not get it. Which medicine/product are you asking about?"
 
     print("Router Model Response Generated.")
     return data
