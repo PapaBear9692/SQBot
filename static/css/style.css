@@ -67,6 +67,34 @@ body {
     box-sizing: border-box;
 }
 
+/* Desktop/Laptop: collapse sidebar properly (no layout gap) */
+@media (min-width: 769px) {
+    .sidebar {
+        transition:
+            width 0.25s ease,
+            margin 0.25s ease,
+            box-shadow 0.25s ease;
+        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+
+    /* Hidden state */
+    .container:not(.sidebar-open) .sidebar {
+        width: 0;
+        margin: 0;
+        padding: 0;
+        border: none;
+        box-shadow: none;
+    }
+
+    /* Visible state */
+    .container.sidebar-open .sidebar {
+        width: clamp(220px, 22vw, 280px);
+        margin: 0;
+    }
+}
+
 .sidebar-header {
     padding-bottom: 10px;
     border-bottom: 1px solid var(--border-subtle);
@@ -287,7 +315,7 @@ body {
 
 /* Mobile sidebar toggle button */
 .sidebar-toggle {
-    display: none;
+    display: inline-flex;
     padding: 6px;
     border-radius: 999px;
     background: transparent;
@@ -698,7 +726,7 @@ body {
 
     .sidebar {
         position: fixed;
-        top: 80px;
+        top: 70px;
         left: 0;
         bottom: 0;
         z-index: 40;
