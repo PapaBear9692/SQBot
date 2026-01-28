@@ -274,14 +274,10 @@ def generate_answer_chat(index: VectorStoreIndex, user_msg: str, expanded_query:
     Chat-engine generation (retrieval + memory) - non-stream
     """
     engine = _get_or_create_chat_engine(index, conv_id)
-    message = f"""User question:
-{user_msg}
-
-Retrieval query:
-{expanded_query}
-"""
+    message = f"""User question:{user_msg} Retrieval query:{expanded_query}"""
     resp = engine.chat(message)
     print("LLamaIndex chat engine response generated.")
+
     return (str(resp) or "").strip()
 
 
@@ -316,7 +312,7 @@ Retrieval query:
 # =====================================================================
 # Orchestration: phase1 -> program flow -> phase2
 # =====================================================================
-def handle_chat_message(index: VectorStoreIndex, user_msg: str, conv_id: str) -> Tuple[str, str]:
+def handle_chat_message(index: VectorStoreIndex, user_msg: str, conv_id: str) -> Tuple[str, str, str]:
     """
     (UNCHANGED) Non-streaming base handler.
     """
@@ -324,13 +320,13 @@ def handle_chat_message(index: VectorStoreIndex, user_msg: str, conv_id: str) ->
     conv_id = (conv_id or "").strip() or "default"
 
     if not user_msg:
-        return ("Please enter a question.", conv_id)
+        return ("Please enter a question.", conv_id, "OTHER")
 
     # -------------------------
     # Phase 1: Router
     # -------------------------
     route = route_message(user_msg, conv_id)
-
+    intent = route.get("intent", "OTHER")
     # Save last user message (router input for next turn)
     last_user_msgs[conv_id] = user_msg
 
@@ -342,9 +338,8 @@ def handle_chat_message(index: VectorStoreIndex, user_msg: str, conv_id: str) ->
     if route.get("needs_clarification"):
         q = route.get("clarification_question") or "Could you clarify your question?"
         chat_history[conv_id].append({"role": "user", "content": user_msg})
-        return (q, conv_id)
+        return (q, conv_id, intent)
 
-    intent = route.get("intent", "OTHER")
     expanded_query = (route.get("retrieval_query") or "").strip()
     product_name = route.get("product_name")
 
@@ -367,7 +362,9 @@ def handle_chat_message(index: VectorStoreIndex, user_msg: str, conv_id: str) ->
             answer = "I couldn't find the product list in my data right now."
         else:
             answer = generate_answer_from_context(user_msg, ctx) or "I could not generate a response."
-    # intent == "PRODUCT_INFO" or others
+    elif intent == "SYMPTOM_HELP":
+        answer = generate_answer_chat(index, user_msg, expanded_query, conv_id) or "I could not generate a response."
+    # intent == "PRODUCT_INFO"
     else:
         answer = generate_answer_chat(index, user_msg, expanded_query, conv_id) or "I could not generate a response."
 
@@ -375,5 +372,5 @@ def handle_chat_message(index: VectorStoreIndex, user_msg: str, conv_id: str) ->
     chat_history[conv_id].append({"role": "user", "content": user_msg})
     chat_history[conv_id].append({"role": "assistant", "content": answer})
 
-    return (answer, conv_id)
+    return (answer, conv_id, intent)
 

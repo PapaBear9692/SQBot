@@ -38,12 +38,12 @@ def chat_route():
         return jsonify({"response": "Please enter a question.", "conversation_id": conv_id})
 
     try:
-        answer, cid = handle_chat_message(index, user_msg, conv_id)
+        answer, cid, intent = handle_chat_message(index, user_msg, conv_id)
     except Exception as e:
         print(f"Error in /get handler: {e!r}")
-        answer, cid = "An error occurred while generating a response.", conv_id
+        answer, cid, intent = "An error occurred while generating a response.", conv_id, None
 
-    return jsonify({"response": answer, "conversation_id": cid})
+    return jsonify({"response": answer, "conversation_id": cid, "intent": intent})
 
 
 

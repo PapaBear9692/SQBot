@@ -253,14 +253,15 @@ function getConversationById(conversationId) {
 }
 
 // Helper (NEW): add message to a specific conversation (prevents “wrong chat” bug)
-function addMessageToConversationById(conversationId, role, text) {
-    const convo = getConversationById(conversationId);
-    if (!convo) return;
+function addMessageToConversationById(conversationId, role, text, intent = null) {
+  const convo = getConversationById(conversationId);
+  if (!convo) return;
 
-    convo.messages.push({ role, content: text });
-    convo.updatedAt = Date.now();
-    saveConversations();
+  convo.messages.push({ role, content: text, intent: intent || null });
+  convo.updatedAt = Date.now();
+  saveConversations();
 }
+
 
 // Short title based on first user question
 function updateConversationTitleIfNeeded(userText) {
@@ -344,7 +345,7 @@ function renderWelcomeMessage() {
     chatMessages.appendChild(wrapper);
 }
 
-function createMessageElement(role, text) {
+function createMessageElement(role, text, intent = null) {
     const wrapper = document.createElement("div");
     wrapper.className = `message ${role === "user" ? "user-message" : "bot-message"}`;
 
@@ -376,12 +377,13 @@ function createMessageElement(role, text) {
     const content = document.createElement("div");
     content.className = "message-content";
 
-    if (role === "bot") {
+    if (role === "bot" && intent === "SYMPTOM_HELP") {
         const note = document.createElement("span");
         note.className = "message-note";
         note.textContent = BOT_DISCLAIMER_TEXT;
         content.appendChild(note);
     }
+
 
     const body = document.createElement("div");
     if (typeof marked !== "undefined") body.innerHTML = marked.parse(text);
@@ -399,55 +401,54 @@ function createMessageElement(role, text) {
 }
 
 // Create an EMPTY bot message bubble and return its content element (for streaming)
-function createBotMessageElementEmpty() {
-    const wrapper = document.createElement("div");
-    wrapper.className = "message bot-message";
+function createBotMessageElementEmpty(intent = null) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "message bot-message";
 
-    const avatar = document.createElement("div");
-    avatar.className = "message-avatar bot-avatar";
+  const avatar = document.createElement("div");
+  avatar.className = "message-avatar bot-avatar";
+  if (BOT_AVATAR) {
+    const img = document.createElement("img");
+    img.src = BOT_AVATAR;
+    img.alt = "Bot";
+    img.className = "bot-logo-avatar";
+    avatar.appendChild(img);
+  } else {
+    avatar.textContent = "AI";
+  }
 
-    if (BOT_AVATAR) {
-        const img = document.createElement("img");
-        img.src = BOT_AVATAR;
-        img.alt = "Bot";
-        img.className = "bot-logo-avatar";
-        avatar.appendChild(img);
-    } else {
-        avatar.textContent = "AI";
-    }
+  const content = document.createElement("div");
+  content.className = "message-content";
 
-    const content = document.createElement("div");
-    content.className = "message-content";
-    // starts empty; we stream into it
-
-    // ✅ Disclaimer (always visible during streaming)
+  // ✅ Disclaimer only for SYMPTOM_HELP
+  if (intent === "SYMPTOM_HELP") {
     const note = document.createElement("span");
     note.className = "message-note";
     note.textContent = BOT_DISCLAIMER_TEXT;
     content.appendChild(note);
+  }
 
-    // Streaming target
-    const streamBody = document.createElement("div");
-    content.appendChild(streamBody);
+  const streamBody = document.createElement("div");
+  content.appendChild(streamBody);
 
-    wrapper.appendChild(avatar);
-    wrapper.appendChild(content);
+  wrapper.appendChild(avatar);
+  wrapper.appendChild(content);
 
-    if (chatMessages) {
-        chatMessages.appendChild(wrapper);
-        scrollToBottom();
-    }
-
-    return { wrapper, content: streamBody };
-    //return { wrapper, content };
-}
-
-function addMessageToUI(role, text) {
-    if (!chatMessages) return;
-    const el = createMessageElement(role, text);
-    chatMessages.appendChild(el);
+  if (chatMessages) {
+    chatMessages.appendChild(wrapper);
     scrollToBottom();
+  }
+
+  return { wrapper, content: streamBody };
 }
+
+function addMessageToUI(role, text, intent = null) {
+  if (!chatMessages) return;
+  const el = createMessageElement(role, text, intent);
+  chatMessages.appendChild(el);
+  scrollToBottom();
+}
+
 
 function addMessageToConversation(role, text) {
     const convo = getCurrentConversation();
@@ -467,7 +468,7 @@ function renderConversation() {
     if (!convo) return;
 
     convo.messages.forEach((msg) => {
-        addMessageToUI(msg.role, msg.content);
+        addMessageToUI(msg.role, msg.content, msg.intent || null);
     });
 }
 
@@ -603,6 +604,7 @@ async function handleSubmit(event) {
 
         const answer =
             data.response || data.answer || "Sorry, I couldn't generate a response.";
+            const intent = data.intent || null;
 
         // Always store reply in the correct conversation
         addMessageToConversationById(targetConversationId, "bot", answer);
@@ -612,7 +614,7 @@ async function handleSubmit(event) {
             if (typingDiv && typingDiv.isConnected) typingDiv.remove();
 
             // ✅ ChatGPT-like streaming render (markdown preserved during streaming)
-            const { content } = createBotMessageElementEmpty();
+            const { content } = createBotMessageElementEmpty(intent);
             await streamIntoElement(content, answer);
         } else {
             // user switched chats; don't show it in the current UI

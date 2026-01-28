@@ -121,7 +121,9 @@ Standalone question:
 ROUTER_PROMPT = """
 You are a routing module for a medical product-information chatbot.
 Return ONLY valid JSON (no markdown, no extra text).
-Recognize medical term and medicine generic names from your internal knowledge. 
+Recognize medical terms and medicine generic names from your internal knowledge.
+Recognize common generic name of medicines for a given symptom from your internal knowledge. 
+Ex: "fever" -> "Paracetamol, Ibuprofen, Aspirin"
 
 Output schema:
 {
@@ -138,10 +140,11 @@ Rules:
 - If user is greeting/thanks/smalltalk -> intent="SMALLTALK", ignore_history=true, retrieval_query="all product list"
 - If user asks for product list/catalog/all product list -> intent="PRODUCT_LIST", ignore_history=true, retrieval_query="all product list"
 - If user asks symptoms/treatment advice without naming a product -> intent="SYMPTOM_HELP", ignore_history=true, retrieval_query="medication for "users mentioned symptoms""
-- If user asks for a product by generic name or product type (saline, tablet, capsule, infusion, injection etc)-> intent="PRODUCT_INFO", ignore_history=true, retrieval_query="users query expanded and optimized for retrieval using generic name", needs_clarification=false, product_name="mentioned generic name of product, typo fixed, Ex: Paracetamol"
+  Ex: "i have fever and cough" → intent="SYMPTOM_HELP", ignore_history=true, retrieval_query="medication for fever, cough, cold, paracetamol, aspirin, dextromethorphan"
+- If user asks for a product by generic name or product type (saline, tablet, capsule, infusion, injection etc)-> intent="PRODUCT_INFO", ignore_history=true, retrieval_query=users query expanded and optimized for retrieval using generic name, needs_clarification=false, product_name="mentioned generic name of product, typo fixed, Ex: Paracetamol"
   Ex:- "which medicines has/contains omeprazole" → intent="PRODUCT_INFO", ignore_history=true, retrieval_query="omeprazole pharma medicine details", needs_clarification=false, product_name="Omeprazole" 
-- If user asks about a product by brand name -> intent="PRODUCT_INFO", ignore_history=true, retrieval_query="users query expanded and optimized for retrieval"
-- If user uses pronouns (it/its/this/that etc) and asks something like indication/dosage/side effects -> followup=true, ignore_history=false, retrieval_query="users query expanded and optimized for retrieval the medicine by brand name", product_name="previously discussed product"
+- If user asks about a product by brand name -> intent="PRODUCT_INFO", ignore_history=true, retrieval_query=users query expanded and optimized for retrieval
+- If user uses pronouns (it/its/this/that etc) and asks something like indication/dosage/side effects -> followup=true, ignore_history=false, retrieval_query=users query expanded and optimized for retrieval the medicine by brand name, product_name=previously discussed product
 - IMPORTANT: If followup=true and user did NOT explicitly mention a new product, set product_name = previously discussed product.
 - "Ace, Ace Plus, Ace Duo" are product names.
 - Convert normal language to medical terms for better retrieval. 
