@@ -13,6 +13,8 @@ const sidebarToggle = document.querySelector(".sidebar-toggle");
 const BOT_AVATAR = containerEl?.dataset.botAvatar || "";
 const USER_AVATAR = containerEl?.dataset.userAvatar || "";
 const LOCAL_STORAGE_KEY = "medicine_chat_conversations_v1";
+const BOT_DISCLAIMER_TEXT =
+  "Please Remember, I am not a doctor, I can only provide product related information. Please consult a doctor for diagnosis, treatment, or dosing decisions.";
 
 // =====================
 // Streaming speed controls (global)
@@ -327,7 +329,7 @@ function renderWelcomeMessage() {
     const note = document.createElement("span");
     note.className = "message-note";
     note.textContent =
-        "⚠️ This service provides general information only and is not a substitute for professional medical advice. Please consult a registered healthcare professional for medical decisions.";
+        "⚠️ This service provides product related information only and is not a substitute for professional medical advice. Please consult a registered healthcare professional for medical decisions.";
 
     const p = document.createElement("p");
     p.textContent =
@@ -374,14 +376,22 @@ function createMessageElement(role, text) {
     const content = document.createElement("div");
     content.className = "message-content";
 
-    // Support Markdown if marked.js is loaded
-    if (typeof marked !== "undefined") {
-        content.innerHTML = marked.parse(text);
-    } else {
+    if (role === "bot") {
+        const note = document.createElement("span");
+        note.className = "message-note";
+        note.textContent = BOT_DISCLAIMER_TEXT;
+        content.appendChild(note);
+    }
+
+    const body = document.createElement("div");
+    if (typeof marked !== "undefined") body.innerHTML = marked.parse(text);
+    else {
         const p = document.createElement("p");
         p.textContent = text;
-        content.appendChild(p);
+        body.appendChild(p);
     }
+    content.appendChild(body);
+
 
     wrapper.appendChild(avatar);
     wrapper.appendChild(content);
@@ -410,6 +420,16 @@ function createBotMessageElementEmpty() {
     content.className = "message-content";
     // starts empty; we stream into it
 
+    // ✅ Disclaimer (always visible during streaming)
+    const note = document.createElement("span");
+    note.className = "message-note";
+    note.textContent = BOT_DISCLAIMER_TEXT;
+    content.appendChild(note);
+
+    // Streaming target
+    const streamBody = document.createElement("div");
+    content.appendChild(streamBody);
+
     wrapper.appendChild(avatar);
     wrapper.appendChild(content);
 
@@ -418,7 +438,8 @@ function createBotMessageElementEmpty() {
         scrollToBottom();
     }
 
-    return { wrapper, content };
+    return { wrapper, content: streamBody };
+    //return { wrapper, content };
 }
 
 function addMessageToUI(role, text) {
