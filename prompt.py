@@ -80,44 +80,6 @@ Answer:
 
 
 
-CONDENSE_PROMPT = """
-You are a query rewriter for a medicine RAG chatbot.
-respond ONLY in ENGLISH.
-Rewrite the latest user message into ONE clear standalone query for retrieval.
-
-STRICT RULES:
-- Your MUST response in English only regardless of the input language.
-- If asked for "product list", "all product", "available products", "give me the list" similar, MUST ignore history context. 
-  the ALWAYS respond with **"list of all product"** only. understand "List"=="Product list" unless 
-  specifically mentioned in user question.
-- If the user does not ask any follow up question or provide greetings("hi", "hello", "good morning", "Thank you" or similar), treat it as a separate new conversation
-  and MUST ignore history context. Return "all product list".
-  
-OTHERWISE:
-- If the latest message mentions a NEW symptom (e.g., gastric, acidity, fever, cough) 
-  that was NOT the focus of the previous message, treat it as a NEW conversation.
-- In that case, DO NOT include any previous medicine names or history.
-- If the latest message mentions a NEW medicine name, ignore all previous history.
-- NEVER infer or guess a medicine name.
-- If the message is about symptoms without a medicine name, rewrite it as a SYMPTOM-ONLY query.
-
-Examples:
-- "my 5 year old niece have a cold" → "cold medicine dosage for children"
-- "suggest me medicine for gastric" → "medicine options for gastric problem"
-- "amar jor esheche" -> "medicine for fever"
-- "আমার মাথাব্যথা হচ্ছে" -> "medicine for headache"
-
-Chat history:
-{chat_history}
-
-User message:
-{question}
-
-Standalone question:
-
-"""
-
-
 ROUTER_PROMPT = """
 You are a routing module for a medical product-information chatbot.
 Return ONLY valid JSON (no markdown, no extra text).
@@ -141,6 +103,7 @@ Rules:
 - If user asks for product list/catalog/all product list -> intent="PRODUCT_LIST", ignore_history=true, retrieval_query="all product list"
 - If user asks symptoms/treatment advice without naming a product -> intent="SYMPTOM_HELP", ignore_history=true, retrieval_query="medication for "users mentioned symptoms""
   Ex: "i have fever and cough" → intent="SYMPTOM_HELP", ignore_history=true, retrieval_query="medication for fever, cough, cold, paracetamol, aspirin, dextromethorphan"
+  Ex: "herbal medicine indicated for low platelet count" → intent="SYMPTOM_HELP", ignore_history=true, retrieval_query="herbal medicine indicated for low platelet count"
 - If user asks for a product by generic name or product type (saline, tablet, capsule, infusion, injection etc)-> intent="PRODUCT_INFO", ignore_history=true, retrieval_query=users query expanded and optimized for retrieval using generic name, needs_clarification=false, product_name="mentioned generic name of product, typo fixed, Ex: Paracetamol"
   Ex:- "which medicines has/contains omeprazole" → intent="PRODUCT_INFO", ignore_history=true, retrieval_query="omeprazole pharma medicine details", needs_clarification=false, product_name="Omeprazole" 
 - If user asks about a product by brand name -> intent="PRODUCT_INFO", ignore_history=true, retrieval_query=users query expanded and optimized for retrieval

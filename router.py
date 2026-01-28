@@ -11,8 +11,6 @@ from llama_index.core.prompts import PromptTemplate
 from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.core.postprocessor import SentenceTransformerRerank
 
-
-from app_config import CACHE_DIR
 from prompt import PROMPT_TEMPLATE, ROUTER_PROMPT
 
 
