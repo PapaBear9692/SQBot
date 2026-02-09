@@ -11,7 +11,7 @@ from llama_index.core.prompts import PromptTemplate
 from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.core.postprocessor import SentenceTransformerRerank
 
-from prompt import PROMPT_TEMPLATE, ROUTER_PROMPT
+from prompt import PROMPT_TEMPLATE, ROUTER_PROMPT, SMALLTALK_SYSTEM_PROMPT
 
 
 # =====================================================================
@@ -38,7 +38,6 @@ RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", str(RETRIEVAL_TOP_K)))
 
 # Good default cross-encoder reranker model
 RERANK_MODEL = os.getenv("RERANK_MODEL", "NeuML/biomedbert-base-reranker")
-
 
 
 # =====================================================================
@@ -150,14 +149,16 @@ def route_message(user_msg: str, conv_id: str) -> Dict[str, Any]:
     # Safety rule: if PRODUCT_INFO but no product_name, force clarification
     if data.get("intent") == "PRODUCT_INFO" and not data.get("product_name"):
         data["needs_clarification"] = True
-        if not data.get("clarification_question"): #rerun router to try get product_name
+        if not data.get("clarification_question"):  # rerun router to try get product_name
             raw = (router_llm.complete(prompt).text or "").strip()
             data = _extract_first_json_object(raw)
             data = _normalize_router_output(data)
             if data.get("intent") == "PRODUCT_INFO" and not data.get("product_name"):
                 data["needs_clarification"] = True
                 if not data.get("clarification_question"):
-                    data["clarification_question"] = "Sorry, I did not get it. Which medicine/product are you asking about?"
+                    data["clarification_question"] = (
+                        "Sorry, I did not get it. Which medicine/product are you asking about?"
+                    )
 
     print("Router Model Response Generated.")
     return data
@@ -180,19 +181,6 @@ def reset_conversation(conv_id: str) -> None:
 # =====================================================================
 text_qa_template = PromptTemplate(PROMPT_TEMPLATE)
 
-
-# def _get_or_create_chat_engine(index: VectorStoreIndex, conv_id: str) -> Any:
-#     """
-#     LlamaIndex chat engine: retrieval + memory
-#     """
-#     if conv_id not in chat_memories:
-#         chat_memories[conv_id] = ChatMemoryBuffer.from_defaults(token_limit=CHAT_MEMORY_TOKENS)
-#         chat_engines[conv_id] = index.as_chat_engine(
-#             chat_mode="context",  # type: ignore
-#             memory=chat_memories[conv_id],
-#             similarity_top_k=RETRIEVAL_TOP_K,
-#         )
-#     return chat_engines[conv_id]
 
 def _get_or_create_chat_engine(index: VectorStoreIndex, conv_id: str) -> Any:
     """
@@ -223,7 +211,6 @@ def _get_or_create_chat_engine(index: VectorStoreIndex, conv_id: str) -> Any:
         )
 
     return chat_engines[conv_id]
-
 
 
 def _nodes_to_context_str(nodes_with_scores) -> str:
@@ -279,6 +266,29 @@ def generate_answer_chat(index: VectorStoreIndex, user_msg: str, expanded_query:
     return (str(resp) or "").strip()
 
 
+# ---------------------------
+# SMALLTALK: no retrieval path
+# ---------------------------
+
+
+def generate_smalltalk_reply(user_msg: str, conv_id: str) -> str:
+    """
+    Smalltalk generation using Settings.llm only (no retrieval, no reranking).
+    Uses chat_history for continuity.
+    """
+    history_txt = _history_to_text(conv_id)
+    prompt = f"""{SMALLTALK_SYSTEM_PROMPT}
+
+CHAT HISTORY:
+{history_txt}
+
+USER: {user_msg}
+ASSISTANT:"""
+
+    resp = Settings.llm.complete(prompt)
+    return (resp.text or "").strip()
+
+
 # ---------------------------------------------------------------------
 # STREAMING: Phase 2 streaming generator (tokens)
 # ---------------------------------------------------------------------
@@ -329,7 +339,8 @@ def handle_chat_message(index: VectorStoreIndex, user_msg: str, conv_id: str) ->
     last_user_msgs[conv_id] = user_msg
 
     # Context switch: hard reset when router says ignore history
-    if route.get("ignore_history") is True:
+    # (Smalltalk should continue, so do NOT reset for SMALLTALK)
+    if route.get("ignore_history") is True and intent != "SMALLTALK":
         reset_conversation(conv_id)
 
     # Clarification path
@@ -352,14 +363,19 @@ def handle_chat_message(index: VectorStoreIndex, user_msg: str, conv_id: str) ->
         expanded_query = user_msg
 
     # -------------------------
-    # Phase 2: LlamaIndex
+    # Phase 2: LlamaIndex / Smalltalk
     # -------------------------
-    if intent == "PRODUCT_LIST" or intent == "SMALLTALK":
+    if intent == "SMALLTALK" or intent == "OTHER":
+        # No retrieval / no rerank; uses 2nd LLM call and keeps continuity via chat_history
+        answer = generate_smalltalk_reply(user_msg, conv_id) or "Hello! How can I help you today?"
+
+    elif intent == "PRODUCT_LIST":
         ctx = retrieve_product_list_context(index)
         if not ctx:
             answer = "I couldn't find the product list in my data right now."
         else:
             answer = generate_answer_from_context(user_msg, ctx) or "I could not generate a response."
+
     elif intent == "SYMPTOM_HELP":
         answer = generate_answer_chat(index, user_msg, expanded_query, conv_id) or "I could not generate a response."
     # intent == "PRODUCT_INFO"
@@ -371,4 +387,3 @@ def handle_chat_message(index: VectorStoreIndex, user_msg: str, conv_id: str) ->
     chat_history[conv_id].append({"role": "assistant", "content": answer})
 
     return (answer, conv_id, intent)
-
