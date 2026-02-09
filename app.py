@@ -13,7 +13,7 @@ load_dotenv()
 # ----------------------------
 # App + Index setup
 # ----------------------------
-app = Flask(__name__, static_url_path="/chat/static")
+app = Flask(__name__, static_url_path="/ai/static")
 app.secret_key = os.getenv("FLASK_SECRET_KEY") or secrets.token_hex(32)
 
 storage_context = init_settings_and_storage()
@@ -55,4 +55,4 @@ def reset_route():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5005)

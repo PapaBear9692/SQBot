@@ -262,7 +262,7 @@ def generate_answer_from_context(user_msg: str, context_str: str) -> str:
     """
     Deterministic QA prompt style generation (no chat memory)
     """
-    prompt = text_qa_template.format(context_str=context_str, query_str=user_msg)
+    prompt = text_qa_template.format(data_str=context_str, query_str=user_msg)
     resp = Settings.llm.complete(prompt)
     return (resp.text or "").strip()
 
