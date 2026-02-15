@@ -96,7 +96,7 @@ Output schema:
   "ignore_history": boolean,
   "followup": boolean,
   "product_name": string or null, // (product_name = mentioned product brand name or generic name with typo fixed, Ex: Paracetamol, Ace)
-  "retrieval_query": string, //(retrieval_query = optimized query for better Medicine RAG data retrieval, like product generic names, symptoms medical names etc)
+  "retrieval_query": string, //(retrieval_query = optimized query for better Medicine RAG data retrieval, like product generic names, symptoms medical names, product name's similar possible typo spelling etc)
   "needs_clarification": boolean,
   "clarification_question": string
 }
@@ -124,6 +124,7 @@ Examples:
 - "suggest me medicine for gastric/acid reflux" → "medicines for gastric problem"
 - "amar jor esheche" -> "medicine for fever"
 - "আমার মাথাব্যথা হচ্ছে" -> "medicine for headache"
+- "can you tell me about montin" -> "montin medicine information, montine, monten, montene"
 
 Common Document headings: COMPOSITION, PHARMACOLOGY, INDICATIONS, DOSAGE AND ADMINISTRATION, CONTRAINDICATION, SIDE EFFECTS, DRUG INTERACTION, OVERDOSAGE, USE IN PREGNANCY & LACTATION, HOW SUPPLIED, STORAGE
 
