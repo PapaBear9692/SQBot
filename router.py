@@ -229,7 +229,8 @@ def _nodes_to_context_str(nodes_with_scores) -> str:
 def retrieve_context(index: VectorStoreIndex, query: str, top_k: int) -> str:
     retriever = index.as_retriever(similarity_top_k=top_k)
     nodes = retriever.retrieve(query)
-    return _nodes_to_context_str(nodes)
+    filtered_nodes = [n for n in nodes if n.score > 0.65] # type: ignore
+    return _nodes_to_context_str(filtered_nodes)
 
 
 def retrieve_product_list_context(index: VectorStoreIndex) -> str:
