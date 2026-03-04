@@ -45,7 +45,7 @@ RERANK_MODEL = os.getenv("RERANK_MODEL", "NeuML/biomedbert-base-reranker")
 # =====================================================================
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or ""
-ROUTER_MODEL = os.getenv("ROUTER_MODEL", "models/gemini-2.0-flash-lite")
+ROUTER_MODEL = os.getenv("ROUTER_MODEL", "models/gemini-2.5-flash-lite")
 router_llm = GoogleGenAI(model=ROUTER_MODEL, api_key=GOOGLE_API_KEY, temperature=0.0)
 
 
