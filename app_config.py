@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from llama_index.core import Settings, StorageContext
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.google_genai import GoogleGenAI
+from google.genai import types
 from llama_index.llms.groq import Groq
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone, ServerlessSpec
@@ -55,6 +56,9 @@ def init_settings_and_storage():
             model=LLM_MODEL_NAME,
             api_key=google_api_key,
             temperature=0.5,
+            generation_config=types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(thinking_budget=512)
+            )
         )
     else:
         Settings.llm = Groq(

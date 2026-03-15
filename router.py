@@ -26,7 +26,7 @@ chat_memories: Dict[str, ChatMemoryBuffer] = {}
 chat_engines: Dict[str, Any] = {}
 
 CHAT_MEMORY_TOKENS = int(os.getenv("CHAT_MEMORY_TOKENS", "300"))
-RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "10"))
+RETRIEVAL_TOP_K = int(os.getenv("RERANK_CANDIDATES", "15"))
 # Rerank settings
 RERANK_ENABLED = os.getenv("RERANK_ENABLED", "true").lower() == "true"
 
