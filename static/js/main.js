@@ -112,16 +112,27 @@ async function streamTokensAsArriving(streamState, typingIndicator = null, recei
                 // Create message on first character
                 if (!messageCreated) createMessageAndRemoveTyping();
                 
-                const char = streamState.buffer[displayedUpTo];
-                displayedUpTo++;
+                // Fast mode: dump rest without animation delays
+                if (streamState.fastMode) {
+                    displayedUpTo = streamState.buffer.length;
+                    renderNow(displayedUpTo);
+                    // Wait for more content or completion
+                    if (!streamState.done) {
+                        await sleep(50);
+                    }
+                } else {
+                    // Normal mode: character by character with delays
+                    const char = streamState.buffer[displayedUpTo];
+                    displayedUpTo++;
 
-                maybeRender(displayedUpTo);
+                    maybeRender(displayedUpTo);
 
-                let extra = 0;
-                if (/[.!?…]/.test(char)) extra += Number(window.STREAM_PUNCT_PAUSE_MS) || 0;
-                if (char === "\n") extra += Number(window.STREAM_NEWLINE_PAUSE_MS) || 0;
+                    let extra = 0;
+                    if (/[.!?…]/.test(char)) extra += Number(window.STREAM_PUNCT_PAUSE_MS) || 0;
+                    if (char === "\n") extra += Number(window.STREAM_NEWLINE_PAUSE_MS) || 0;
 
-                await sleep(baseDelay + extra);
+                    await sleep(baseDelay + extra);
+                }
             } else {
                 await sleep(5);
             }
@@ -141,23 +152,34 @@ async function streamTokensAsArriving(streamState, typingIndicator = null, recei
                 // Create message on first character
                 if (!messageCreated) createMessageAndRemoveTyping();
                 
-                const remaining = streamState.buffer.substring(displayedUpTo);
-                const wordMatch = remaining.match(/(\s+|\S+)/);
-
-                if (wordMatch) {
-                    const token = wordMatch[0];
-                    displayedUpTo += token.length;
-
-                    maybeRender(displayedUpTo);
-
-                    let extra = 0;
-                    const trimmed = token.trim();
-                    if (trimmed && isPunctEnding(trimmed)) extra += Number(window.STREAM_PUNCT_PAUSE_MS) || 0;
-                    if (token.includes("\n")) extra += Number(window.STREAM_NEWLINE_PAUSE_MS) || 0;
-
-                    await sleep(baseDelay + extra);
+                // Fast mode: dump rest without animation delays
+                if (streamState.fastMode) {
+                    displayedUpTo = streamState.buffer.length;
+                    renderNow(displayedUpTo);
+                    // Wait for more content or completion
+                    if (!streamState.done) {
+                        await sleep(50);
+                    }
                 } else {
-                    await sleep(5);
+                    // Normal mode: word by word with delays
+                    const remaining = streamState.buffer.substring(displayedUpTo);
+                    const wordMatch = remaining.match(/(\s+|\S+)/);
+
+                    if (wordMatch) {
+                        const token = wordMatch[0];
+                        displayedUpTo += token.length;
+
+                        maybeRender(displayedUpTo);
+
+                        let extra = 0;
+                        const trimmed = token.trim();
+                        if (trimmed && isPunctEnding(trimmed)) extra += Number(window.STREAM_PUNCT_PAUSE_MS) || 0;
+                        if (token.includes("\n")) extra += Number(window.STREAM_NEWLINE_PAUSE_MS) || 0;
+
+                        await sleep(baseDelay + extra);
+                    } else {
+                        await sleep(5);
+                    }
                 }
             } else {
                 await sleep(5);
@@ -603,7 +625,7 @@ async function handleSubmit(event) {
         let botContentEl = null;
         
         // State object shared between SSE handler and animation
-        const streamState = { buffer: "", done: false };
+        const streamState = { buffer: "", done: false, tokenCount: 0, fastMode: false };
         let animationPromise = null;
 
         while (true) {
@@ -633,6 +655,12 @@ async function handleSubmit(event) {
                             const token = event.content || "";
                             // Add token to buffer - animation will pick it up and render it
                             streamState.buffer += token;
+                            
+                            // Track token count and switch to fast mode after 50 chunks
+                            streamState.tokenCount++;
+                            if (streamState.tokenCount > 20) {
+                                streamState.fastMode = true;
+                            }
                             
                         } else if (event.type === "end") {
                             // Streaming complete
