@@ -29,13 +29,129 @@ window.STREAM_NEWLINE_PAUSE_MS = 50; // extra pause after newline
 window.STREAM_MIN_DELAY_MS = 10;     // floor
 window.STREAM_MD_RENDER_INTERVAL_MS = 60; // re-render markdown every N ms during streaming
 
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Streams tokens INTO element as they arrive (SSE), animating character-by-character.
+ * Accepts a state object that gets updated with tokens as they arrive.
+ * Animation continuously renders what's in the buffer, character by character.
+ */
+async function streamTokensAsArriving(el, streamState) {
+    if (!el) return "";
+
+    // allow cancellation
+    if (el.__streamCancel) el.__streamCancel();
+    let cancelled = false;
+    el.__streamCancel = () => { cancelled = true; };
+
+    const useMarkdown = (typeof marked !== "undefined");
+    const mode = window.STREAM_MODE || "word";
+    const renderEvery = Math.max(10, Number(window.STREAM_MD_RENDER_INTERVAL_MS) || 60);
+    
+    let displayedUpTo = 0;
+    let lastRenderAt = 0;
+
+    const renderNow = (upToIndex) => {
+        if (cancelled) return;
+
+        const shouldStick =
+            chatMessages
+                ? (chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - 40)
+                : true;
+
+        const displayedText = streamState.buffer.substring(0, upToIndex);
+        if (useMarkdown) {
+            el.innerHTML = marked.parse(displayedText);
+        } else {
+            el.textContent = displayedText;
+        }
+
+        if (shouldStick) scrollToBottom();
+    };
+
+    const maybeRender = (upToIndex) => {
+        const now = Date.now();
+        if (now - lastRenderAt >= renderEvery) {
+            lastRenderAt = now;
+            renderNow(upToIndex);
+        }
+    };
+
+    renderNow(0); // clear initially
+
+    if (mode === "char") {
+        const cps = Number(window.STREAM_CPS) || 500;
+        const baseDelay = Math.max(window.STREAM_MIN_DELAY_MS, Math.round(1000 / cps));
+
+        while (!cancelled) {
+            // Check if there's new content to animate
+            if (displayedUpTo >= streamState.buffer.length && streamState.done) {
+                // All tokens received and displayed
+                break;
+            }
+
+            if (displayedUpTo < streamState.buffer.length) {
+                // We have a character to animate
+                const char = streamState.buffer[displayedUpTo];
+                displayedUpTo++;
+
+                maybeRender(displayedUpTo);
+
+                let extra = 0;
+                if (/[.!?…]/.test(char)) extra += Number(window.STREAM_PUNCT_PAUSE_MS) || 0;
+                if (char === "\n") extra += Number(window.STREAM_NEWLINE_PAUSE_MS) || 0;
+
+                await sleep(baseDelay + extra);
+            } else {
+                // No content yet, but more coming - wait a bit before checking again
+                await sleep(5);
+            }
+        }
+    } else {
+        // Word mode
+        const wps = Number(window.STREAM_WPS) || 200;
+        const baseDelay = Math.max(window.STREAM_MIN_DELAY_MS, Math.round(1000 / wps));
+
+        while (!cancelled) {
+            // Check if there's new content to animate
+            if (displayedUpTo >= streamState.buffer.length && streamState.done) {
+                // All tokens received and displayed
+                break;
+            }
+
+            if (displayedUpTo < streamState.buffer.length) {
+                // Find the next word boundary from where we left off
+                const remaining = streamState.buffer.substring(displayedUpTo);
+                const wordMatch = remaining.match(/(\s+|\S+)/);
+
+                if (wordMatch) {
+                    const token = wordMatch[0];
+                    displayedUpTo += token.length;
+
+                    maybeRender(displayedUpTo);
+
+                    let extra = 0;
+                    const trimmed = token.trim();
+                    if (trimmed && isPunctEnding(trimmed)) extra += Number(window.STREAM_PUNCT_PAUSE_MS) || 0;
+                    if (token.includes("\n")) extra += Number(window.STREAM_NEWLINE_PAUSE_MS) || 0;
+
+                    await sleep(baseDelay + extra);
+                } else {
+                    // No match, wait
+                    await sleep(5);
+                }
+            } else {
+                // No content yet, but more coming - wait a bit
+                await sleep(5);
+            }
+        }
+    }
+
+    // Final render to ensure complete formatting
+    renderNow(streamState.buffer.length);
+
+    return streamState.buffer;
 }
 
-function isPunctEnding(token) {
-    return /[.!?…]$/.test(token);
-}
+
 
 /**
  * Streams fullText into element el progressively,
@@ -588,7 +704,7 @@ async function handleSubmit(event) {
         formData.append("msg", text);
         formData.append("conversation_id", sendConversationId || "");
 
-        const response = await fetch("get", {
+        const response = await fetch("stream", {
             method: "POST",
             body: formData
         });
@@ -597,28 +713,81 @@ async function handleSubmit(event) {
             throw new Error(`Server error: ${response.status}`);
         }
 
-        const data = await response.json();
+        // Handle Server-Sent Events (SSE)
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        
+        let targetConversationId = sendConversationId;
+        let receivedIntent = null;
+        let botContentEl = null;
+        
+        // State object shared between SSE handler and animation
+        const streamState = { buffer: "", done: false };
+        let animationPromise = null;
 
-        // Server may echo conversation_id; use it if present, otherwise pinned one
-        const targetConversationId = data.conversation_id || sendConversationId;
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-        const answer =
-            data.response || data.answer || "Sorry, I couldn't generate a response.";
-            const intent = data.intent || null;
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split("\n");
 
-        // Always store reply in the correct conversation
-        addMessageToConversationById(targetConversationId, "bot", answer);
+            for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                    try {
+                        const jsonStr = line.slice(6); // Remove "data: " prefix
+                        const event = JSON.parse(jsonStr);
 
-        // Only render in UI if user is still viewing that conversation
-        if (currentConversationId === targetConversationId) {
-            if (typingDiv && typingDiv.isConnected) typingDiv.remove();
+                        if (event.type === "start") {
+                            targetConversationId = event.conversation_id || sendConversationId;
+                            receivedIntent = event.intent || null;
 
-            // ✅ ChatGPT-like streaming render (markdown preserved during streaming)
-            const { content } = createBotMessageElementEmpty(intent);
-            await streamIntoElement(content, answer);
-        } else {
-            // user switched chats; don't show it in the current UI
-            if (typingDiv && typingDiv.isConnected) typingDiv.remove();
+                            // Only render in UI if user is still viewing that conversation
+                            if (currentConversationId === targetConversationId) {
+                                if (typingDiv && typingDiv.isConnected) typingDiv.remove();
+                                const { content } = createBotMessageElementEmpty(receivedIntent);
+                                botContentEl = content;
+
+                                // Start animation immediately - it will wait for tokens to arrive
+                                animationPromise = streamTokensAsArriving(botContentEl, streamState);
+                            }
+                        } else if (event.type === "token") {
+                            const token = event.content || "";
+                            // Add token to buffer - animation will pick it up and render it
+                            streamState.buffer += token;
+                            
+                        } else if (event.type === "end") {
+                            // Streaming complete
+                            targetConversationId = event.conversation_id || sendConversationId;
+                            streamState.done = true;
+                            
+                        } else if (event.type === "error") {
+                            const errorContent = event.content || "An error occurred.";
+                            streamState.buffer = errorContent;
+                            streamState.done = true;
+                            throw new Error(errorContent);
+                        }
+                    } catch (parseErr) {
+                        // Skip malformed SSE events
+                        if (parseErr instanceof SyntaxError) {
+                            continue;
+                        }
+                        throw parseErr;
+                    }
+                }
+            }
+        }
+
+        // Wait for animation to complete
+        if (animationPromise) {
+            await animationPromise;
+        }
+
+        // Store the complete response in the correct conversation
+        addMessageToConversationById(targetConversationId, "bot", streamState.buffer);
+
+        // If user switched chats during streaming, update sidebar
+        if (currentConversationId !== targetConversationId) {
             renderSidebar();
         }
     } catch (error) {

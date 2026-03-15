@@ -255,6 +255,24 @@ def generate_answer_from_context(user_msg: str, context_str: str) -> str:
     return (resp.text or "").strip()
 
 
+def generate_answer_from_context_stream(user_msg: str, context_str: str) -> Generator[str, None, str]:
+    """
+    Streaming version of context-based answer generation.
+    Yields tokens as they arrive.
+    """
+    prompt = text_qa_template.format(data_str=context_str, query_str=user_msg)
+    resp = Settings.llm.stream_complete(prompt)
+    
+    chunks = []
+    for tok in resp:
+        text = tok.delta or ""
+        if text:
+            chunks.append(text)
+            yield text
+    
+    return "".join(chunks).strip()
+
+
 def generate_answer_chat(index: VectorStoreIndex, user_msg: str, expanded_query: str, conv_id: str) -> str:
     """
     Chat-engine generation (retrieval + memory) - non-stream
@@ -288,6 +306,31 @@ ASSISTANT:"""
 
     resp = Settings.llm.complete(prompt)
     return (resp.text or "").strip()
+
+
+def generate_smalltalk_reply_stream(user_msg: str, conv_id: str) -> Generator[str, None, str]:
+    """
+    Streaming version of smalltalk generation.
+    Yields tokens as they arrive.
+    """
+    history_txt = _history_to_text(conv_id)
+    prompt = f"""{SMALLTALK_SYSTEM_PROMPT}
+
+CHAT HISTORY:
+{history_txt}
+
+USER: {user_msg}
+ASSISTANT:"""
+
+    resp = Settings.llm.stream_complete(prompt)
+    chunks = []
+    for tok in resp:
+        text = tok.delta or ""
+        if text:
+            chunks.append(text)
+            yield text
+    
+    return "".join(chunks).strip()
 
 
 # ---------------------------------------------------------------------
@@ -388,3 +431,110 @@ def handle_chat_message(index: VectorStoreIndex, user_msg: str, conv_id: str) ->
     chat_history[conv_id].append({"role": "assistant", "content": answer})
 
     return (answer, conv_id, intent)
+
+
+def handle_chat_message_stream(
+    index: VectorStoreIndex, user_msg: str, conv_id: str
+) -> Tuple[Generator[str, None, str], str, str]:
+    """
+    Streaming version of chat message handler.
+    Returns (generator, conversation_id, intent).
+    
+    The generator yields tokens and returns full text at the end (StopIteration.value).
+    Full text is stored in chat history only after streaming completes.
+    """
+    user_msg = (user_msg or "").strip()
+    conv_id = (conv_id or "").strip() or "default"
+
+    if not user_msg:
+        def empty_gen():
+            yield "Please enter a question."
+            return "Please enter a question."
+        return (empty_gen(), conv_id, "OTHER")
+
+    # -------------------------
+    # Phase 1: Router
+    # -------------------------
+    route = route_message(user_msg, conv_id)
+    intent = route.get("intent", "OTHER")
+    # Save last user message (router input for next turn)
+    last_user_msgs[conv_id] = user_msg
+
+    # Context switch: hard reset when router says ignore history
+    if route.get("ignore_history") is True and intent != "SMALLTALK":
+        reset_conversation(conv_id)
+
+    # Clarification path
+    if route.get("needs_clarification"):
+        q = route.get("clarification_question") or "Could you clarify your question?"
+        chat_history[conv_id].append({"role": "user", "content": user_msg})
+        
+        def clarification_gen():
+            yield q
+            return q
+        return (clarification_gen(), conv_id, intent)
+
+    expanded_query = (route.get("retrieval_query") or "").strip()
+    product_name = route.get("product_name")
+
+    # Build expanded query safely
+    if intent == "PRODUCT_INFO":
+        if not expanded_query:
+            expanded_query = product_name or user_msg
+        elif product_name and product_name.lower() not in expanded_query.lower():
+            expanded_query = f"{product_name} {expanded_query}".strip()
+
+    if not expanded_query:
+        expanded_query = user_msg
+
+    # -------------------------
+    # Phase 2: LlamaIndex / Smalltalk - STREAMING VERSIONS
+    # -------------------------
+    def stream_with_history_storage(token_gen: Generator[str, None, str]) -> Generator[str, None, str]:
+        """Wrapper that stores the streamed answer in chat history after streaming completes."""
+        chunks = []
+        for token in token_gen:
+            chunks.append(token)
+            yield token
+        
+        full_answer = "".join(chunks).strip()
+        # Store turns for router continuity only after streaming completes
+        chat_history[conv_id].append({"role": "user", "content": user_msg})
+        chat_history[conv_id].append({"role": "assistant", "content": full_answer})
+        
+        return full_answer
+
+    if intent == "SMALLTALK" or intent == "OTHER":
+        return (
+            stream_with_history_storage(generate_smalltalk_reply_stream(user_msg, conv_id)),
+            conv_id,
+            intent
+        )
+
+    elif intent == "PRODUCT_LIST":
+        ctx = retrieve_product_list_context(index)
+        if not ctx:
+            def product_list_empty_gen():
+                yield "I couldn't find the product list in my data right now."
+                return "I couldn't find the product list in my data right now."
+            return (product_list_empty_gen(), conv_id, intent)
+        else:
+            return (
+                stream_with_history_storage(generate_answer_from_context_stream(user_msg, ctx)),
+                conv_id,
+                intent
+            )
+
+    elif intent == "SYMPTOM_HELP":
+        return (
+            stream_with_history_storage(generate_answer_chat_stream(index, user_msg, expanded_query, conv_id)),
+            conv_id,
+            intent
+        )
+    # intent == "PRODUCT_INFO"
+    else:
+        return (
+            stream_with_history_storage(generate_answer_chat_stream(index, user_msg, expanded_query, conv_id)),
+            conv_id,
+            intent
+        )

@@ -2,11 +2,11 @@ import os
 import secrets
 
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 
 from llama_index.core import VectorStoreIndex
 from app_config import init_settings_and_storage
-from router import handle_chat_message, reset_conversation
+from router import handle_chat_message, handle_chat_message_stream, reset_conversation
 
 load_dotenv()
 
@@ -52,6 +52,46 @@ def reset_route():
     conv_id = (request.form.get("conversation_id") or "").strip() or "default"
     reset_conversation(conv_id)
     return jsonify({"status": "ok"})
+
+
+@app.route("/stream", methods=["POST"])
+def stream_route():
+    """Streaming endpoint using Server-Sent Events (SSE)."""
+    import json
+    
+    user_msg = (request.form.get("msg") or "").strip()
+    conv_id = (request.form.get("conversation_id") or "").strip() or "default"
+
+    if not user_msg:
+        return jsonify({"error": "Please enter a question.", "conversation_id": conv_id}), 400
+
+    def generate():
+        try:
+            token_gen, cid, intent = handle_chat_message_stream(index, user_msg, conv_id)
+            
+            # Send initial metadata as first event
+            start_event = json.dumps({"type": "start", "conversation_id": cid, "intent": intent})
+            yield f"data: {start_event}\n\n"
+            
+            # Stream tokens
+            for token in token_gen:
+                token_event = json.dumps({"type": "token", "content": token})
+                yield f"data: {token_event}\n\n"
+            
+            # Send end event
+            end_event = json.dumps({"type": "end", "conversation_id": cid})
+            yield f"data: {end_event}\n\n"
+            
+        except Exception as e:
+            print(f"Error in /stream handler: {e!r}")
+            error_msg = "An error occurred while generating a response."
+            error_event = json.dumps({"type": "error", "content": error_msg})
+            yield f"data: {error_event}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no"
+    })
 
 
 if __name__ == "__main__":
