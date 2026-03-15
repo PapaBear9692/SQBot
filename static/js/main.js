@@ -29,6 +29,14 @@ window.STREAM_NEWLINE_PAUSE_MS = 50; // extra pause after newline
 window.STREAM_MIN_DELAY_MS = 10;     // floor
 window.STREAM_MD_RENDER_INTERVAL_MS = 60; // re-render markdown every N ms during streaming
 
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isPunctEnding(token) {
+    return /[.!?…]$/.test(token);
+}
+
 /**
  * Streams tokens INTO element as they arrive (SSE), animating character-by-character.
  * Accepts a state object that gets updated with tokens as they arrive.
@@ -780,7 +788,12 @@ async function handleSubmit(event) {
 
         // Wait for animation to complete
         if (animationPromise) {
-            await animationPromise;
+            try {
+                await animationPromise;
+            } catch (e) {
+                console.error("Animation error:", e);
+                throw e;
+            }
         }
 
         // Store the complete response in the correct conversation

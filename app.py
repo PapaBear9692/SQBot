@@ -58,6 +58,7 @@ def reset_route():
 def stream_route():
     """Streaming endpoint using Server-Sent Events (SSE)."""
     import json
+    import traceback
     
     user_msg = (request.form.get("msg") or "").strip()
     conv_id = (request.form.get("conversation_id") or "").strip() or "default"
@@ -67,16 +68,21 @@ def stream_route():
 
     def generate():
         try:
+            print(f"Stream handler: Processing msg='{user_msg[:50]}' for conv_id='{conv_id}'")
             token_gen, cid, intent = handle_chat_message_stream(index, user_msg, conv_id)
             
             # Send initial metadata as first event
             start_event = json.dumps({"type": "start", "conversation_id": cid, "intent": intent})
             yield f"data: {start_event}\n\n"
             
+            token_count = 0
             # Stream tokens
             for token in token_gen:
+                token_count += 1
                 token_event = json.dumps({"type": "token", "content": token})
                 yield f"data: {token_event}\n\n"
+            
+            print(f"Stream handler: Sent {token_count} tokens")
             
             # Send end event
             end_event = json.dumps({"type": "end", "conversation_id": cid})
@@ -84,7 +90,8 @@ def stream_route():
             
         except Exception as e:
             print(f"Error in /stream handler: {e!r}")
-            error_msg = "An error occurred while generating a response."
+            print(traceback.format_exc())
+            error_msg = f"An error occurred: {str(e)[:100]}"
             error_event = json.dumps({"type": "error", "content": error_msg})
             yield f"data: {error_event}\n\n"
 
