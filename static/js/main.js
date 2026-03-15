@@ -41,14 +41,13 @@ function isPunctEnding(token) {
  * Streams tokens INTO element as they arrive (SSE), animating character-by-character.
  * Accepts a state object that gets updated with tokens as they arrive.
  * Animation continuously renders what's in the buffer, character by character.
+ * Creates message element and removes typing indicator on first token.
  */
-async function streamTokensAsArriving(el, streamState) {
-    if (!el) return "";
+async function streamTokensAsArriving(streamState, typingIndicator = null, receivedIntent = null) {
+    if (!streamState) return "";
 
-    // allow cancellation
-    if (el.__streamCancel) el.__streamCancel();
     let cancelled = false;
-    el.__streamCancel = () => { cancelled = true; };
+    const cancelRef = () => { cancelled = true; };
 
     const useMarkdown = (typeof marked !== "undefined");
     const mode = window.STREAM_MODE || "word";
@@ -56,9 +55,25 @@ async function streamTokensAsArriving(el, streamState) {
     
     let displayedUpTo = 0;
     let lastRenderAt = 0;
+    let messageCreated = false;
+    let el = null;
+
+    const createMessageAndRemoveTyping = () => {
+        if (messageCreated) return;
+        messageCreated = true;
+        
+        // Remove typing indicator
+        if (typingIndicator && typingIndicator.isConnected) {
+            typingIndicator.remove();
+        }
+        
+        // Create message element
+        const { content } = createBotMessageElementEmpty(receivedIntent);
+        el = content;
+    };
 
     const renderNow = (upToIndex) => {
-        if (cancelled) return;
+        if (cancelled || !el) return;
 
         const shouldStick =
             chatMessages
@@ -83,8 +98,6 @@ async function streamTokensAsArriving(el, streamState) {
         }
     };
 
-    renderNow(0); // clear initially
-
     if (mode === "char") {
         const cps = Number(window.STREAM_CPS) || 500;
         const baseDelay = Math.max(window.STREAM_MIN_DELAY_MS, Math.round(1000 / cps));
@@ -92,12 +105,13 @@ async function streamTokensAsArriving(el, streamState) {
         while (!cancelled) {
             // Check if there's new content to animate
             if (displayedUpTo >= streamState.buffer.length && streamState.done) {
-                // All tokens received and displayed
                 break;
             }
 
             if (displayedUpTo < streamState.buffer.length) {
-                // We have a character to animate
+                // Create message on first character
+                if (!messageCreated) createMessageAndRemoveTyping();
+                
                 const char = streamState.buffer[displayedUpTo];
                 displayedUpTo++;
 
@@ -109,7 +123,6 @@ async function streamTokensAsArriving(el, streamState) {
 
                 await sleep(baseDelay + extra);
             } else {
-                // No content yet, but more coming - wait a bit before checking again
                 await sleep(5);
             }
         }
@@ -121,12 +134,13 @@ async function streamTokensAsArriving(el, streamState) {
         while (!cancelled) {
             // Check if there's new content to animate
             if (displayedUpTo >= streamState.buffer.length && streamState.done) {
-                // All tokens received and displayed
                 break;
             }
 
             if (displayedUpTo < streamState.buffer.length) {
-                // Find the next word boundary from where we left off
+                // Create message on first character
+                if (!messageCreated) createMessageAndRemoveTyping();
+                
                 const remaining = streamState.buffer.substring(displayedUpTo);
                 const wordMatch = remaining.match(/(\s+|\S+)/);
 
@@ -143,156 +157,25 @@ async function streamTokensAsArriving(el, streamState) {
 
                     await sleep(baseDelay + extra);
                 } else {
-                    // No match, wait
                     await sleep(5);
                 }
             } else {
-                // No content yet, but more coming - wait a bit
                 await sleep(5);
             }
         }
     }
 
     // Final render to ensure complete formatting
-    renderNow(streamState.buffer.length);
+    if (el) {
+        renderNow(streamState.buffer.length);
+    }
 
     return streamState.buffer;
 }
 
 
 
-/**
- * Streams fullText into element el progressively,
- * preserving Markdown formatting DURING streaming.
- *
- * NOTE:
- * - Mid-stream markdown may look imperfect for unfinished fences/lists.
- * - Uses throttling to avoid expensive parse on every token.
- */
-async function streamIntoElement(el, fullText) {
-    if (!el) return;
-
-    // allow cancellation (e.g., switching chats / re-render)
-    if (el.__streamCancel) el.__streamCancel();
-    let cancelled = false;
-    el.__streamCancel = () => { cancelled = true; };
-
-    const text = fullText || "";
-
-    // If streaming disabled, render instantly (markdown if available)
-    if (!window.STREAM_ENABLED) {
-        if (typeof marked !== "undefined") el.innerHTML = marked.parse(text);
-        else el.textContent = text;
-        return;
-    }
-
-    const useMarkdown = (typeof marked !== "undefined");
-    const mode = window.STREAM_MODE || "word";
-
-    // buffer we append into
-    let buffer = "";
-
-    // Throttled renderer so we don't parse markdown every token (too slow)
-    const renderEvery = Math.max(10, Number(window.STREAM_MD_RENDER_INTERVAL_MS) || 60);
-    let lastRenderAt = 0;
-
-    const renderNow = () => {
-        if (cancelled) return;
-
-        const shouldStick =
-            chatMessages
-                ? (chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - 40)
-                : true;
-
-        if (useMarkdown) {
-            el.innerHTML = marked.parse(buffer);
-        } else {
-            el.textContent = buffer;
-        }
-
-        if (shouldStick) scrollToBottom();
-    };
-
-    const maybeRender = () => {
-        const now = Date.now();
-        if (now - lastRenderAt >= renderEvery) {
-            lastRenderAt = now;
-            renderNow();
-        }
-    };
-
-    // Clear initially
-    buffer = "";
-    renderNow();
-
-    // ✅ NEW: hard cutoff (10s) -> dump the rest at once
-    const startedAt = Date.now();
-    const maxMs = 10_000;
-
-    const exceededTimeLimit = () => (Date.now() - startedAt) > maxMs;
-
-    const dumpRestAndFinish = (rest) => {
-        if (cancelled) return;
-        buffer += rest;
-        renderNow(); // final render with full markdown
-    };
-
-    if (mode === "char") {
-        const cps = Number(window.STREAM_CPS) || 35;
-        const baseDelay = Math.max(window.STREAM_MIN_DELAY_MS, Math.round(1000 / cps));
-
-        for (let i = 0; i < text.length; i++) {
-            if (cancelled) return;
-
-            // ✅ NEW: if time limit hit, append remainder and exit
-            if (exceededTimeLimit()) {
-                dumpRestAndFinish(text.slice(i));
-                return;
-            }
-
-            const ch = text[i];
-            buffer += ch;
-
-            maybeRender();
-
-            let extra = 0;
-            if (/[.!?…]/.test(ch)) extra += Number(window.STREAM_PUNCT_PAUSE_MS) || 0;
-            if (ch === "\n") extra += Number(window.STREAM_NEWLINE_PAUSE_MS) || 0;
-
-            await sleep(baseDelay + extra);
-        }
-    } else {
-        const wps = Number(window.STREAM_WPS) || 10;
-        const baseDelay = Math.max(window.STREAM_MIN_DELAY_MS, Math.round(1000 / wps));
-        const tokens = text.split(/(\s+)/);
-
-        for (let idx = 0; idx < tokens.length; idx++) {
-            if (cancelled) return;
-
-            // ✅ NEW: if time limit hit, append remainder and exit
-            if (exceededTimeLimit()) {
-                await sleep(2); // yield
-                dumpRestAndFinish(tokens.slice(idx).join(""));
-                return;
-            }
-
-            const t = tokens[idx];
-            buffer += t;
-
-            maybeRender();
-
-            let extra = 0;
-            const trimmed = t.trim();
-            if (trimmed && isPunctEnding(trimmed)) extra += Number(window.STREAM_PUNCT_PAUSE_MS) || 0;
-            if (t.includes("\n")) extra += Number(window.STREAM_NEWLINE_PAUSE_MS) || 0;
-
-            await sleep(baseDelay + extra);
-        }
-    }
-
-    // Final render (ensures complete formatting)
-    renderNow();
-}
+// streamIntoElement removed - using streamTokensAsArriving for real-time streaming instead
 
 
 // ===== STATE =====
@@ -573,16 +456,6 @@ function addMessageToUI(role, text, intent = null) {
   scrollToBottom();
 }
 
-
-function addMessageToConversation(role, text) {
-    const convo = getCurrentConversation();
-    if (!convo) return;
-
-    convo.messages.push({ role, content: text });
-    convo.updatedAt = Date.now();
-    saveConversations();
-}
-
 // Render the messages for the current conversation
 function renderConversation() {
     clearMessages();
@@ -752,12 +625,9 @@ async function handleSubmit(event) {
 
                             // Only render in UI if user is still viewing that conversation
                             if (currentConversationId === targetConversationId) {
-                                if (typingDiv && typingDiv.isConnected) typingDiv.remove();
-                                const { content } = createBotMessageElementEmpty(receivedIntent);
-                                botContentEl = content;
-
-                                // Start animation immediately - it will wait for tokens to arrive
-                                animationPromise = streamTokensAsArriving(botContentEl, streamState);
+                                // Don't create message element yet - wait for first token
+                                // Start animation immediately - message and typing removal happen on first token
+                                animationPromise = streamTokensAsArriving(streamState, typingDiv, receivedIntent);
                             }
                         } else if (event.type === "token") {
                             const token = event.content || "";
@@ -815,9 +685,13 @@ async function handleSubmit(event) {
         if (currentConversationId === sendConversationId) {
             if (typingDiv && typingDiv.isConnected) typingDiv.remove();
 
-            // Stream error too (optional)
+            // Display error message
             const { content } = createBotMessageElementEmpty();
-            await streamIntoElement(content, errorMsg);
+            if (typeof marked !== "undefined") {
+                content.innerHTML = marked.parse(errorMsg);
+            } else {
+                content.textContent = errorMsg;
+            }
         } else {
             if (typingDiv && typingDiv.isConnected) typingDiv.remove();
             renderSidebar();
