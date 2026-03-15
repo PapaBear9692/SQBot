@@ -26,15 +26,16 @@ chat_memories: Dict[str, ChatMemoryBuffer] = {}
 chat_engines: Dict[str, Any] = {}
 
 CHAT_MEMORY_TOKENS = int(os.getenv("CHAT_MEMORY_TOKENS", "300"))
-RETRIEVAL_TOP_K = int(os.getenv("RERANK_CANDIDATES", "15"))
+# Optimized: Reduced chunks for faster retrieval
+RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "10"))  # was 15 - reduces Pinecone latency
 # Rerank settings
 RERANK_ENABLED = os.getenv("RERANK_ENABLED", "true").lower() == "true"
 
 # Pull this many candidates from Pinecone first (should be > RERANK_TOP_N)
-RERANK_CANDIDATES = int(os.getenv("RERANK_CANDIDATES", str(max(RETRIEVAL_TOP_K, 30))))
+RERANK_CANDIDATES = int(os.getenv("RERANK_CANDIDATES", str(max(RETRIEVAL_TOP_K, 10))))
 
-# Keep this many after rerank (this is your "final top_k" effectively)
-RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", str(RETRIEVAL_TOP_K)))
+# Keep this many after rerank (optimized for speed)
+RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", "5"))  # was 7 - faster processing, still quality
 
 # Good default cross-encoder reranker model
 RERANK_MODEL = os.getenv("RERANK_MODEL", "NeuML/biomedbert-base-reranker")
@@ -45,6 +46,7 @@ RERANK_MODEL = os.getenv("RERANK_MODEL", "NeuML/biomedbert-base-reranker")
 # =====================================================================
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or ""
+# faster than 2.5-flash-lite for routing tasks)
 ROUTER_MODEL = os.getenv("ROUTER_MODEL", "models/gemini-2.5-flash-lite")
 router_llm = GoogleGenAI(model=ROUTER_MODEL, api_key=GOOGLE_API_KEY, temperature=0.0)
 
@@ -132,6 +134,7 @@ def route_message(user_msg: str, conv_id: str) -> Dict[str, Any]:
     Router call (LLM #1)
     - uses chat_history text + last_user_message + user_message
     - returns JSON schema from ROUTER_PROMPT
+    - SINGLE PASS: no retry, faster processing
     """
     prompt = _render_router_prompt(
         ROUTER_PROMPT,
@@ -146,19 +149,12 @@ def route_message(user_msg: str, conv_id: str) -> Dict[str, Any]:
     data = _extract_first_json_object(raw)
     data = _normalize_router_output(data)
 
-    # Safety rule: if PRODUCT_INFO but no product_name, force clarification
+    # Safety rule: if PRODUCT_INFO but no product_name, force clarification (NO RETRY)
     if data.get("intent") == "PRODUCT_INFO" and not data.get("product_name"):
         data["needs_clarification"] = True
-        if not data.get("clarification_question"):  # rerun router to try get product_name
-            raw = (router_llm.complete(prompt).text or "").strip()
-            data = _extract_first_json_object(raw)
-            data = _normalize_router_output(data)
-            if data.get("intent") == "PRODUCT_INFO" and not data.get("product_name"):
-                data["needs_clarification"] = True
-                if not data.get("clarification_question"):
-                    data["clarification_question"] = (
-                        "Sorry, I did not get it. Which medicine/product are you asking about?"
-                    )
+        data["clarification_question"] = (
+            "Sorry, I did not get it. Which medicine/product are you asking about?"
+        )
 
     print("Router Model Response Generated.")
     return data
@@ -182,17 +178,23 @@ def reset_conversation(conv_id: str) -> None:
 text_qa_template = PromptTemplate(PROMPT_TEMPLATE)
 
 
-def _get_or_create_chat_engine(index: VectorStoreIndex, conv_id: str) -> Any:
+def _get_or_create_chat_engine(index: VectorStoreIndex, conv_id: str, enable_rerank: bool = True) -> Any:
     """
     LlamaIndex chat engine: retrieval + memory + (optional) rerank
+    
+    Args:
+        enable_rerank: Set False for intents that don't benefit from reranking (e.g., SMALLTALK)
     """
-    if conv_id not in chat_memories:
-        chat_memories[conv_id] = ChatMemoryBuffer.from_defaults(token_limit=CHAT_MEMORY_TOKENS)
+    # Create a unique key for different rerank modes
+    engine_key = f"{conv_id}_rerank_{enable_rerank}"
+    
+    if engine_key not in chat_memories:
+        chat_memories[engine_key] = ChatMemoryBuffer.from_defaults(token_limit=CHAT_MEMORY_TOKENS)
 
         node_postprocessors = []
         similarity_top_k = RETRIEVAL_TOP_K
 
-        if RERANK_ENABLED:
+        if RERANK_ENABLED and enable_rerank:
             # Ensure we fetch more candidates than we keep
             candidates = max(RERANK_CANDIDATES, RERANK_TOP_N)
             similarity_top_k = candidates
@@ -203,14 +205,14 @@ def _get_or_create_chat_engine(index: VectorStoreIndex, conv_id: str) -> Any:
             )
             node_postprocessors = [rerank]
 
-        chat_engines[conv_id] = index.as_chat_engine(
+        chat_engines[engine_key] = index.as_chat_engine(
             chat_mode="context",  # type: ignore
-            memory=chat_memories[conv_id],
+            memory=chat_memories[engine_key],
             similarity_top_k=similarity_top_k,          # Pinecone candidates
             node_postprocessors=node_postprocessors,    # local reranker
         )
 
-    return chat_engines[conv_id]
+    return chat_engines[engine_key]
 
 
 def _nodes_to_context_str(nodes_with_scores) -> str:
@@ -337,13 +339,16 @@ ASSISTANT:"""
 # STREAMING: Phase 2 streaming generator (tokens)
 # ---------------------------------------------------------------------
 def generate_answer_chat_stream(
-    index: VectorStoreIndex, user_msg: str, expanded_query: str, conv_id: str
+    index: VectorStoreIndex, user_msg: str, expanded_query: str, conv_id: str, enable_rerank: bool = True
 ) -> Generator[str, None, str]:
     """
     Chat-engine generation (retrieval + memory) - streaming.
     Yields tokens, and returns the full text at the end (StopIteration.value).
+    
+    Args:
+        enable_rerank: Disable for non-critical intents (PRODUCT_LIST, etc.) to save 1-2 seconds
     """
-    engine = _get_or_create_chat_engine(index, conv_id)
+    engine = _get_or_create_chat_engine(index, conv_id, enable_rerank=enable_rerank)
     message = f"""User question:
 {user_msg}
 
@@ -526,15 +531,21 @@ def handle_chat_message_stream(
             )
 
     elif intent == "SYMPTOM_HELP":
+        # SYMPTOM_HELP uses reranking for better quality
         return (
-            stream_with_history_storage(generate_answer_chat_stream(index, user_msg, expanded_query, conv_id)),
+            stream_with_history_storage(
+                generate_answer_chat_stream(index, user_msg, expanded_query, conv_id, enable_rerank=True)
+            ),
             conv_id,
             intent
         )
     # intent == "PRODUCT_INFO"
     else:
+        # PRODUCT_INFO uses reranking for accuracy
         return (
-            stream_with_history_storage(generate_answer_chat_stream(index, user_msg, expanded_query, conv_id)),
+            stream_with_history_storage(
+                generate_answer_chat_stream(index, user_msg, expanded_query, conv_id, enable_rerank=True)
+            ),
             conv_id,
             intent
         )

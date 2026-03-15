@@ -68,7 +68,7 @@ def stream_route():
 
     def generate():
         try:
-            print(f"Stream handler: Processing msg='{user_msg[:50]}' for conv_id='{conv_id}'")
+            #print(f"Stream handler: Processing msg='{user_msg[:50]}' for conv_id='{conv_id}'")
             token_gen, cid, intent = handle_chat_message_stream(index, user_msg, conv_id)
             
             # Send initial metadata as first event
