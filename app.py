@@ -2,8 +2,11 @@ import os
 import secrets
 
 from dotenv import load_dotenv
-load_dotenv()
 
+try:
+    load_dotenv()
+except Exception as e:
+    print(f"Warning: Could not load .env file: {e}")
 
 from flask import Flask, render_template, request, jsonify
 
@@ -18,16 +21,21 @@ text_qa_template = PromptTemplate(PROMPT_TEMPLATE)
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY") or secrets.token_hex(32)
 
-print("Initializing LlamaIndex + Pinecone via embedder.init_settings_and_storage()...")
-storage_context = init_settings_and_storage()
-vector_store = storage_context.vector_store
+query_engine = None
 
-index = VectorStoreIndex.from_vector_store(vector_store)
-query_engine = index.as_query_engine(
-    similarity_top_k=7,
-    response_mode="compact",
-    text_qa_template=text_qa_template,
-)
+try:
+    print("Initializing LlamaIndex + Pinecone via embedder.init_settings_and_storage()...")
+    storage_context = init_settings_and_storage()
+    vector_store = storage_context.vector_store
+
+    index = VectorStoreIndex.from_vector_store(vector_store)
+    query_engine = index.as_query_engine(
+        similarity_top_k=7,
+        response_mode="compact",
+        text_qa_template=text_qa_template,
+    )
+except Exception as e:
+    print(f"Warning: Failed to initialize query engine (check API keys): {e}")
 
 
 @app.route("/")
@@ -40,6 +48,9 @@ def chat_route():
     user_msg = (request.form.get("msg") or "").strip()
     if not user_msg:
         return jsonify({"response": "Please enter a question."})
+
+    if query_engine is None:
+        return jsonify({"response": "System under Development maintanace, please try again later."})
 
     try:
         response_obj = query_engine.query(user_msg)
@@ -70,4 +81,4 @@ def chat_route():
 
 
 if __name__ == "__main__":
-    app.run(debug=False)
+    app.run(debug=True)
