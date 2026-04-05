@@ -704,7 +704,7 @@ async function handleSubmit(event) {
     } catch (error) {
         console.error("Error:", error);
 
-        const errorMsg = "Sorry, there was an error contacting the server.";
+        const errorMsg = "The AI is under development. Thank you for your interest. Please check again later    .";
 
         // Store error in the correct conversation
         addMessageToConversationById(sendConversationId, "bot", errorMsg);
