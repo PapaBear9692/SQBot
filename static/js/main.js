@@ -364,7 +364,8 @@ async function handleSubmit(event) {
     } catch (error) {
         console.error("Error:", error);
         typingDiv.remove();
-        const errorMsg = "Sorry, there was an error contacting the server.";
+        const errorMsg = "The AI engine is currently under development, Thank you for your interest. Please check back later.";
+        //const errorMsg = "Sorry, there was an error contacting the server.";
         addMessageToUI("bot", errorMsg);
         addMessageToConversation("bot", errorMsg);
     } finally {
