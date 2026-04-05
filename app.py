@@ -2,13 +2,17 @@ import os
 import secrets
 
 from dotenv import load_dotenv
+
+try:
+    load_dotenv()
+except Exception as e:
+    print(f"Warning: Could not load .env file: {e}")
+
 from flask import Flask, render_template, request, jsonify, Response
 
 from llama_index.core import VectorStoreIndex
 from app_config import init_settings_and_storage
 from router import handle_chat_message, handle_chat_message_stream, reset_conversation
-
-load_dotenv()
 
 # ----------------------------
 # App + Index setup
@@ -16,9 +20,14 @@ load_dotenv()
 app = Flask(__name__, static_url_path="/ai/static")
 app.secret_key = os.getenv("FLASK_SECRET_KEY") or secrets.token_hex(32)
 
-storage_context = init_settings_and_storage()
-vector_store = storage_context.vector_store
-index = VectorStoreIndex.from_vector_store(vector_store)
+index = None
+
+try:
+    storage_context = init_settings_and_storage()
+    vector_store = storage_context.vector_store
+    index = VectorStoreIndex.from_vector_store(vector_store)
+except Exception as e:
+    print(f"Warning: Failed to initialize index (check API keys): {e}")
 
 # ----------------------------
 # Routes
@@ -36,6 +45,9 @@ def chat_route():
 
     if not user_msg:
         return jsonify({"response": "Please enter a question.", "conversation_id": conv_id})
+
+    if index is None:
+        return jsonify({"response": "The AI is under development. Thank you for your interest. Please check again later.", "conversation_id": conv_id})
 
     try:
         answer, cid, intent = handle_chat_message(index, user_msg, conv_id)
@@ -59,12 +71,15 @@ def stream_route():
     """Streaming endpoint using Server-Sent Events (SSE)."""
     import json
     import traceback
-    
+
     user_msg = (request.form.get("msg") or "").strip()
     conv_id = (request.form.get("conversation_id") or "").strip() or "default"
 
     if not user_msg:
         return jsonify({"error": "Please enter a question.", "conversation_id": conv_id}), 400
+
+    if index is None:
+        return jsonify({"error": "The AI is under development. Thank you for your interest. Please check again later.", "conversation_id": conv_id}), 503
 
     def generate():
         try:
