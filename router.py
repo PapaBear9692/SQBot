@@ -44,11 +44,21 @@ RERANK_MODEL = os.getenv("RERANK_MODEL", "NeuML/biomedbert-base-reranker")
 # =====================================================================
 # Phase 1: Google GenAI Router (intent, continuity, context switch, query)
 # =====================================================================
-load_dotenv()
+try:
+    load_dotenv()
+except Exception as e:
+    print(f"Warning: Could not load .env file: {e}")
+
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or ""
 # faster than 2.5-flash-lite for routing tasks)
 ROUTER_MODEL = os.getenv("ROUTER_MODEL", "models/gemini-2.5-flash-lite")
-router_llm = GoogleGenAI(model=ROUTER_MODEL, api_key=GOOGLE_API_KEY, temperature=0.0)
+router_llm = None
+
+try:
+    if GOOGLE_API_KEY:
+        router_llm = GoogleGenAI(model=ROUTER_MODEL, api_key=GOOGLE_API_KEY, temperature=0.0)
+except Exception as e:
+    print(f"Warning: Failed to initialize router LLM: {e}")
 
 
 def _history_to_text(conv_id: str) -> str:
@@ -136,6 +146,18 @@ def route_message(user_msg: str, conv_id: str) -> Dict[str, Any]:
     - returns JSON schema from ROUTER_PROMPT
     - SINGLE PASS: no retry, faster processing
     """
+    if router_llm is None:
+        # Return a default route when LLM is not available
+        return _normalize_router_output({
+            "intent": "PRODUCT_INFO",
+            "ignore_history": False,
+            "followup": False,
+            "product_name": None,
+            "retrieval_query": user_msg,
+            "needs_clarification": False,
+            "clarification_question": "",
+        })
+
     prompt = _render_router_prompt(
         ROUTER_PROMPT,
         {
